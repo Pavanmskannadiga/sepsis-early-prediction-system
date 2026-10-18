@@ -6,6 +6,8 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org)
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Pavanmskannadiga/sepsis-early-prediction-system)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg)](https://fastapi.tiangolo.com)
+[![CI & Deployment](https://github.com/Pavanmskannadiga/sepsis-early-prediction-system/actions/workflows/ci.yml/badge.svg)](https://github.com/Pavanmskannadiga/sepsis-early-prediction-system/actions/workflows/ci.yml)
+[![Tests Passing](https://img.shields.io/badge/Tests-30%20Passed-brightgreen.svg)](#)
 [![License](https://img.shields.io/badge/License-Academic-green.svg)](#)
 
 > **Department of Artificial Intelligence & Machine Learning**  
