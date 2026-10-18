@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: sepsis-early-prediction-system
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
+    startCommand: python start_server.py
+    healthCheckPath: /api/status
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: ICU_PATIENT_COUNT
+        value: 12
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: SEPSIS_API_KEY
+        generateValue: true

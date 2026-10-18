@@ -4,6 +4,8 @@
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Pavanmskannadiga/sepsis-early-prediction-system)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg)](https://fastapi.tiangolo.com)
 [![License](https://img.shields.io/badge/License-Academic-green.svg)](#)
 
 > **Department of Artificial Intelligence & Machine Learning**  
@@ -202,7 +204,29 @@ sp system/
 |------------|-------|-----|
 | Train A → Test A (same hospital) | 0.91 | 0.82 |
 | Train A → Test B (cross-hospital) | 0.85 | 0.74 |
-| Train A+B → Test B (combined) | 0.90 | 0.81 |
+## 🚀 Deployment & Production Options
+
+### 1. One-Click Cloud Deployment (Render Blueprint)
+Deploy directly to Render with a single click using the pre-configured blueprint:
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Pavanmskannadiga/sepsis-early-prediction-system)
+
+### 2. Clinical Zero-Trust Edge Deployment
+Launch local live inference with an instant Cloudflare global encrypted edge tunnel:
+```bash
+# Windows 1-Click Launcher:
+deploy_clinical_edge.bat
+
+# Python Cross-Platform Launcher:
+python deploy_clinical_edge.py
+```
+
+### 3. Containerized Deployment (Docker)
+```bash
+docker compose up -d --build
+```
+
+### 4. Progressive Web App (PWA) Bedside Monitoring
+Open `https://<your-domain>/live.html` on any device (Chrome/Safari/Edge) and click **"Install App"** or **"Add to Home Screen"** to run full-screen with offline-first neural surrogate fallback resilience.
 
 ## 📚 References
 
