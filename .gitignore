@@ -1,0 +1,42 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Node Modules & Capacitor
+node_modules/
+android/app/build/
+android/.gradle/
+android/build/
+*.apk
+
+# Raw Medical Datasets (Large Data)
+data/raw/
+*.psv
+*.csv
+
+# Tools & Local Binaries
+tools/
+*.exe
+
+# Audit Logs & Sensitive Files
+.env
+.env.local
+results/audit.log
+results/logs/
+
+# Testing & IDE
+.pytest_cache/
+.vscode/
+.idea/
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db

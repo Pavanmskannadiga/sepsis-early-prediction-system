@@ -1,0 +1,12 @@
+{
+  "appId": "com.sepsispredictai.app",
+  "appName": "SepsisPredictAI",
+  "webDir": "dashboard",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

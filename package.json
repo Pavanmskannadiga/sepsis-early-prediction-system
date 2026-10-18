@@ -1,0 +1,20 @@
+{
+  "name": "sp-system",
+  "version": "1.0.0",
+  "description": "### Explainable BiLSTM with SHAP Interpretability, SMOTE Imbalance Handling, and Cross-Hospital Generalization",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^6.2.2",
+    "@capacitor/core": "^8.5.2"
+  }
+}

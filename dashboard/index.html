@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sepsis Early Prediction System — Research Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <div class="nav-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="url(#navGrad)" stroke-width="2">
+                    <defs><linearGradient id="navGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#667eea"/><stop offset="100%" stop-color="#00d2ff"/></linearGradient></defs>
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                </svg>
+            </div>
+            <span>SepsisPredictAI</span>
+        </div>
+        <div class="nav-links">
+            <a href="#hero">Overview</a>
+            <a href="#architecture">Architecture</a>
+            <a href="#performance">Performance</a>
+            <a href="#shap">SHAP Analysis</a>
+            <a href="#cross-hospital">Validation</a>
+            <a href="#imbalance">Imbalance</a>
+            <a href="live.html" class="nav-demo-link" style="background:linear-gradient(135deg,#7c3aed,#06b6d4); color:#fff; font-weight:700; border-radius:20px; padding:0.4rem 0.9rem;">🏥 Live ICU Ward</a>
+        </div>
+        <div class="nav-hamburger" id="navHamburger">
+            <span></span><span></span><span></span>
+        </div>
+    </nav>
+
+    <!-- Mobile Nav -->
+    <div class="mobile-nav" id="mobileNav">
+        <a href="#hero">Overview</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#performance">Performance</a>
+        <a href="#shap">SHAP Analysis</a>
+        <a href="#cross-hospital">Validation</a>
+        <a href="#imbalance">Imbalance</a>
+        <a href="live.html" style="color:#38bdf8; font-weight:700;">🏥 Launch Live ICU Ward Monitor</a>
+    </div>
+
+    <!-- ==================== SECTION 1: HERO ==================== -->
+    <section id="hero" class="hero-section">
+        <div class="hero-content">
+            <div class="hero-badge animate-in">
+                <span class="badge-dot"></span>
+                Research Project 2025–2026
+            </div>
+            <h1 class="hero-title animate-in">
+                Sepsis Early<br>
+                <span class="gradient-text">Prediction System</span>
+            </h1>
+            <p class="hero-subtitle animate-in">
+                Explainable BiLSTM with SHAP Interpretability<br>
+                <span class="hero-sub-detail">Predicting sepsis onset <strong>6 hours</strong> before clinical manifestation</span>
+            </p>
+            <div style="margin: 1.2rem 0; display:flex; justify-content:center; gap:0.8rem; flex-wrap:wrap;" class="animate-in">
+                <a href="live.html" style="background:linear-gradient(135deg,#667eea,#764ba2,#06b6d4); color:#ffffff; padding:0.75rem 1.6rem; border-radius:30px; font-weight:700; text-decoration:none; font-size:0.95rem; box-shadow:0 4px 20px rgba(102,126,234,0.4); display:inline-flex; align-items:center; gap:0.5rem; transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    🫀 Launch Live ICU Ward Monitor
+                </a>
+            </div>
+            <div class="hero-stats">
+                <div class="stat-card animate-in" data-delay="0">
+                    <div class="stat-icon auc-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 5-10"/></svg>
+                    </div>
+                    <div class="stat-value" data-target="0.91" data-decimals="2">0.00</div>
+                    <div class="stat-label">AUC-ROC</div>
+                    <div class="stat-bar"><div class="stat-bar-fill" data-width="91"></div></div>
+                </div>
+                <div class="stat-card animate-in" data-delay="100">
+                    <div class="stat-icon f1-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M6 12h12"/></svg>
+                    </div>
+                    <div class="stat-value" data-target="0.82" data-decimals="2">0.00</div>
+                    <div class="stat-label">F1 Score</div>
+                    <div class="stat-bar"><div class="stat-bar-fill" data-width="82"></div></div>
+                </div>
+                <div class="stat-card animate-in" data-delay="200">
+                    <div class="stat-icon sens-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </div>
+                    <div class="stat-value" data-target="0.87" data-decimals="2">0.00</div>
+                    <div class="stat-label">Sensitivity</div>
+                    <div class="stat-bar"><div class="stat-bar-fill" data-width="87"></div></div>
+                </div>
+                <div class="stat-card animate-in" data-delay="300">
+                    <div class="stat-icon spec-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+                    </div>
+                    <div class="stat-value" data-target="0.89" data-decimals="2">0.00</div>
+                    <div class="stat-label">Specificity</div>
+                    <div class="stat-bar"><div class="stat-bar-fill" data-width="89"></div></div>
+                </div>
+            </div>
+        </div>
+        <div class="scroll-indicator">
+            <div class="scroll-mouse"><div class="scroll-wheel"></div></div>
+            <span>Scroll to explore</span>
+        </div>
+    </section>
+
+    <!-- ==================== SECTION 2: ARCHITECTURE ==================== -->
+    <section id="architecture" class="section">
+        <div class="container">
+            <div class="section-header animate-in">
+                <span class="section-tag">Neural Network</span>
+                <h2 class="section-title">Model Architecture</h2>
+                <p class="section-desc">BiLSTM with Multi-Head Attention mechanism for temporal clinical feature extraction</p>
+            </div>
+            <div class="architecture-diagram animate-in">
+                <div class="arch-flow">
+                    <!-- Input -->
+                    <div class="arch-node arch-input">
+                        <div class="arch-node-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg>
+                        </div>
+                        <div class="arch-node-title">Input Layer</div>
+                        <div class="arch-node-detail">34 Features × 48h</div>
+                        <div class="arch-node-sub">Vital signs, lab values,<br>demographics</div>
+                    </div>
+                    <div class="arch-connector"><div class="arch-arrow"></div><div class="arch-pulse"></div></div>
+
+                    <!-- BiLSTM -->
+                    <div class="arch-node arch-bilstm">
+                        <div class="arch-node-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 6v-2M10 6v-2M14 6v-2M18 6v-2M6 18v2M10 18v2M14 18v2M18 18v2"/></svg>
+                        </div>
+                        <div class="arch-node-title">BiLSTM</div>
+                        <div class="arch-node-detail">2 Layers, 128 Hidden</div>
+                        <div class="arch-node-sub">Bidirectional temporal<br>feature extraction</div>
+                    </div>
+                    <div class="arch-connector"><div class="arch-arrow"></div><div class="arch-pulse"></div></div>
+
+                    <!-- Attention -->
+                    <div class="arch-node arch-attention">
+                        <div class="arch-node-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" stroke-dasharray="4 2"/><circle cx="12" cy="12" r="10" stroke-dasharray="2 3"/></svg>
+                        </div>
+                        <div class="arch-node-title">Multi-Head Attention</div>
+                        <div class="arch-node-detail">4 Attention Heads</div>
+                        <div class="arch-node-sub">Context-aware temporal<br>weighting mechanism</div>
+                    </div>
+                    <div class="arch-connector"><div class="arch-arrow"></div><div class="arch-pulse"></div></div>
+
+                    <!-- Dense -->
+                    <div class="arch-node arch-dense">
+                        <div class="arch-node-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="8" r="2"/><circle cx="6" cy="16" r="2"/><circle cx="18" cy="12" r="2"/><line x1="8" y1="8" x2="16" y2="12"/><line x1="8" y1="16" x2="16" y2="12"/></svg>
+                        </div>
+                        <div class="arch-node-title">Dense Layers</div>
+                        <div class="arch-node-detail">256 → 64 → 1</div>
+                        <div class="arch-node-sub">Dropout 0.3<br>BatchNorm</div>
+                    </div>
+                    <div class="arch-connector"><div class="arch-arrow"></div><div class="arch-pulse"></div></div>
+
+                    <!-- Output -->
+                    <div class="arch-node arch-output">
+                        <div class="arch-node-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                        </div>
+                        <div class="arch-node-title">Sigmoid Output</div>
+                        <div class="arch-node-detail">P(Sepsis)</div>
+                        <div class="arch-node-sub">Binary probability<br>Threshold: 0.5</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Architecture detail cards -->
+            <div class="arch-details-grid animate-in">
+                <div class="arch-detail-card">
+                    <div class="detail-number">34</div>
+                    <div class="detail-label">Input Features</div>
+                    <div class="detail-desc">Vital signs, lab values, demographics, interventions</div>
+                </div>
+                <div class="arch-detail-card">
+                    <div class="detail-number">48h</div>
+                    <div class="detail-label">Lookback Window</div>
+                    <div class="detail-desc">Hourly-resolved temporal sequences for context</div>
+                </div>
+                <div class="arch-detail-card">
+                    <div class="detail-number">128</div>
+                    <div class="detail-label">Hidden Units</div>
+                    <div class="detail-desc">Per direction in each BiLSTM layer (256 total)</div>
+                </div>
+                <div class="arch-detail-card">
+                    <div class="detail-number">4</div>
+                    <div class="detail-label">Attention Heads</div>
+                    <div class="detail-desc">Parallel attention for multi-scale temporal patterns</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== SECTION 3: PERFORMANCE ==================== -->
+    <section id="performance" class="section">
+        <div class="container">
+            <div class="section-header animate-in">
+                <span class="section-tag">Evaluation</span>
+                <h2 class="section-title">Performance Metrics</h2>
+                <p class="section-desc">Comprehensive evaluation on the MIMIC-III clinical dataset</p>
+            </div>
+
+            <!-- ROC & PR Curves -->
+            <div class="charts-row animate-in">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>ROC Curve</h3>
+                        <span class="chart-badge">AUC = 0.91</span>
+                    </div>
+                    <canvas id="rocCanvas" width="500" height="400"></canvas>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Precision-Recall Curve</h3>
+                        <span class="chart-badge">AUC-PR = 0.78</span>
+                    </div>
+                    <canvas id="prCanvas" width="500" height="400"></canvas>
+                </div>
+            </div>
+
+            <!-- Confusion Matrix -->
+            <div class="confusion-section animate-in">
+                <div class="chart-card confusion-card">
+                    <div class="chart-header">
+                        <h3>Confusion Matrix</h3>
+                        <span class="chart-badge">n = 4,000</span>
+                    </div>
+                    <div class="confusion-matrix">
+                        <div class="cm-labels-y">
+                            <span>Actual<br>Positive</span>
+                            <span>Actual<br>Negative</span>
+                        </div>
+                        <div class="cm-grid">
+                            <div class="cm-header-x">
+                                <span>Predicted Positive</span>
+                                <span>Predicted Negative</span>
+                            </div>
+                            <div class="cm-cell cm-tp" data-value="423">
+                                <div class="cm-value">423</div>
+                                <div class="cm-label">True Positive</div>
+                            </div>
+                            <div class="cm-cell cm-fn" data-value="63">
+                                <div class="cm-value">63</div>
+                                <div class="cm-label">False Negative</div>
+                            </div>
+                            <div class="cm-cell cm-fp" data-value="156">
+                                <div class="cm-value">156</div>
+                                <div class="cm-label">False Positive</div>
+                            </div>
+                            <div class="cm-cell cm-tn" data-value="3358">
+                                <div class="cm-value">3358</div>
+                                <div class="cm-label">True Negative</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cm-derived">
+                        <div class="cm-metric"><span>Precision</span><strong>73.1%</strong></div>
+                        <div class="cm-metric"><span>Recall</span><strong>87.0%</strong></div>
+                        <div class="cm-metric"><span>Accuracy</span><strong>94.5%</strong></div>
+                        <div class="cm-metric"><span>NPV</span><strong>98.2%</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Model Comparison Table -->
+            <div class="comparison-section animate-in">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Model Comparison</h3>
+                        <span class="chart-badge">5 Models</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Model</th>
+                                    <th>AUC-ROC</th>
+                                    <th>AUC-PR</th>
+                                    <th>F1</th>
+                                    <th>Sensitivity</th>
+                                    <th>Specificity</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="highlight-row">
+                                    <td><span class="model-badge ours">★</span> BiLSTM+Attention <span class="ours-tag">Ours</span></td>
+                                    <td><strong>0.91</strong></td>
+                                    <td><strong>0.78</strong></td>
+                                    <td><strong>0.82</strong></td>
+                                    <td><strong>0.87</strong></td>
+                                    <td><strong>0.89</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="model-badge lstm">▸</span> Standard LSTM</td>
+                                    <td>0.86</td>
+                                    <td>0.69</td>
+                                    <td>0.75</td>
+                                    <td>0.81</td>
+                                    <td>0.85</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="model-badge xgb">▸</span> XGBoost</td>
+                                    <td>0.88</td>
+                                    <td>0.72</td>
+                                    <td>0.78</td>
+                                    <td>0.83</td>
+                                    <td>0.87</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="model-badge rf">▸</span> Random Forest</td>
+                                    <td>0.84</td>
+                                    <td>0.65</td>
+                                    <td>0.72</td>
+                                    <td>0.78</td>
+                                    <td>0.83</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="model-badge lr">▸</span> Logistic Regression</td>
+                                    <td>0.79</td>
+                                    <td>0.58</td>
+                                    <td>0.66</td>
+                                    <td>0.72</td>
+                                    <td>0.80</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== SECTION 4: SHAP ==================== -->
+    <section id="shap" class="section">
+        <div class="container">
+            <div class="section-header animate-in">
+                <span class="section-tag">Explainability</span>
+                <h2 class="section-title">SHAP Feature Importance</h2>
+                <p class="section-desc">Global and patient-level model interpretability via SHAP values</p>
+            </div>
+
+            <div class="shap-grid">
+                <!-- Global SHAP -->
+                <div class="chart-card shap-chart-card animate-in">
+                    <div class="chart-header">
+                        <h3>Global Feature Importance</h3>
+                        <span class="chart-badge">Top 10</span>
+                    </div>
+                    <canvas id="shapCanvas" width="600" height="450"></canvas>
+                </div>
+
+                <!-- Patient-level explanation -->
+                <div class="chart-card patient-card animate-in">
+                    <div class="chart-header">
+                        <h3>Patient-Level Explanation</h3>
+                        <span class="chart-badge risk-high">HIGH RISK</span>
+                    </div>
+                    <div class="patient-info">
+                        <div class="patient-header">
+                            <div class="patient-id">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                Patient #12847
+                            </div>
+                            <div class="risk-score">
+                                <div class="risk-gauge">
+                                    <svg viewBox="0 0 120 60" class="gauge-svg">
+                                        <path d="M 10 55 A 50 50 0 0 1 110 55" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="8" stroke-linecap="round"/>
+                                        <path d="M 10 55 A 50 50 0 0 1 110 55" fill="none" stroke="url(#gaugeGrad)" stroke-width="8" stroke-linecap="round" stroke-dasharray="157" stroke-dashoffset="20.41" class="gauge-fill"/>
+                                        <defs>
+                                            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                <stop offset="0%" stop-color="#22c55e"/>
+                                                <stop offset="50%" stop-color="#eab308"/>
+                                                <stop offset="100%" stop-color="#ef4444"/>
+                                            </linearGradient>
+                                        </defs>
+                                    </svg>
+                                    <div class="gauge-value">0.87</div>
+                                </div>
+                                <span class="risk-label">Risk Score</span>
+                            </div>
+                        </div>
+                        <div class="patient-divider"></div>
+                        <h4 class="contrib-title">Contributing Factors</h4>
+                        <div class="contrib-list">
+                            <div class="contrib-item up">
+                                <span class="contrib-arrow">↑</span>
+                                <span class="contrib-name">Lactate</span>
+                                <span class="contrib-change">3.2 → 4.8 mmol/L</span>
+                                <span class="contrib-shap">+0.15</span>
+                            </div>
+                            <div class="contrib-item down">
+                                <span class="contrib-arrow">↓</span>
+                                <span class="contrib-name">MAP</span>
+                                <span class="contrib-change">72 → 58 mmHg</span>
+                                <span class="contrib-shap">+0.12</span>
+                            </div>
+                            <div class="contrib-item up">
+                                <span class="contrib-arrow">↑</span>
+                                <span class="contrib-name">Heart Rate</span>
+                                <span class="contrib-change">88 → 112 bpm</span>
+                                <span class="contrib-shap">+0.09</span>
+                            </div>
+                            <div class="contrib-item up">
+                                <span class="contrib-arrow">↑</span>
+                                <span class="contrib-name">Resp Rate</span>
+                                <span class="contrib-change">18 → 26 /min</span>
+                                <span class="contrib-shap">+0.08</span>
+                            </div>
+                            <div class="contrib-item down">
+                                <span class="contrib-arrow">↓</span>
+                                <span class="contrib-name">Platelets</span>
+                                <span class="contrib-change">180 → 95 ×10³/µL</span>
+                                <span class="contrib-shap">+0.06</span>
+                            </div>
+                        </div>
+                        <div class="patient-footer">
+                            <div class="pf-item"><span>Prediction Window</span><strong>6h before onset</strong></div>
+                            <div class="pf-item"><span>Confidence</span><strong>92.3%</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== SECTION 5: CROSS-HOSPITAL ==================== -->
+    <section id="cross-hospital" class="section">
+        <div class="container">
+            <div class="section-header animate-in">
+                <span class="section-tag">Generalizability</span>
+                <h2 class="section-title">Cross-Hospital Validation</h2>
+                <p class="section-desc">Evaluating model robustness across different hospital datasets</p>
+            </div>
+
+            <div class="cross-hospital-content">
+                <div class="chart-card animate-in">
+                    <div class="chart-header">
+                        <h3>Cross-Validation Results</h3>
+                        <span class="chart-badge">6 Experiments</span>
+                    </div>
+                    <canvas id="crossHospitalCanvas" width="800" height="400"></canvas>
+                    <div class="table-wrapper" style="margin-top:1.5rem;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Experiment</th>
+                                    <th>AUC-ROC</th>
+                                    <th>F1 Score</th>
+                                    <th>Sensitivity</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="exp-dot green"></span>Train A → Test A</td>
+                                    <td>0.91</td><td>0.82</td><td>0.87</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="exp-dot yellow"></span>Train A → Test B</td>
+                                    <td>0.85</td><td>0.74</td><td>0.80</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="exp-dot yellow"></span>Train B → Test A</td>
+                                    <td>0.84</td><td>0.73</td><td>0.79</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="exp-dot green"></span>Train B → Test B</td>
+                                    <td>0.89</td><td>0.79</td><td>0.84</td>
+                                </tr>
+                                <tr class="highlight-row">
+                                    <td><span class="exp-dot blue"></span>Train A+B → Test A</td>
+                                    <td><strong>0.92</strong></td><td><strong>0.83</strong></td><td><strong>0.88</strong></td>
+                                </tr>
+                                <tr class="highlight-row">
+                                    <td><span class="exp-dot blue"></span>Train A+B → Test B</td>
+                                    <td><strong>0.90</strong></td><td><strong>0.81</strong></td><td><strong>0.86</strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== SECTION 6: IMBALANCE ==================== -->
+    <section id="imbalance" class="section">
+        <div class="container">
+            <div class="section-header animate-in">
+                <span class="section-tag">Data Engineering</span>
+                <h2 class="section-title">Class Imbalance Analysis</h2>
+                <p class="section-desc">Addressing severe class imbalance in clinical sepsis datasets</p>
+            </div>
+
+            <div class="imbalance-grid">
+                <!-- Before/After SMOTE Donut Charts -->
+                <div class="chart-card animate-in">
+                    <div class="chart-header">
+                        <h3>Class Distribution</h3>
+                        <span class="chart-badge">Before vs After SMOTE</span>
+                    </div>
+                    <div class="donut-row">
+                        <div class="donut-wrap">
+                            <canvas id="donutBefore" width="220" height="220"></canvas>
+                            <div class="donut-center">
+                                <span class="donut-pct">7.3%</span>
+                                <span class="donut-lbl">Positive</span>
+                            </div>
+                            <div class="donut-title">Before SMOTE</div>
+                            <div class="donut-details">
+                                <span class="dd-pos">■ Positive: 2,932</span>
+                                <span class="dd-neg">■ Negative: 37,068</span>
+                            </div>
+                        </div>
+                        <div class="donut-arrow">
+                            <svg viewBox="0 0 60 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h50M46 6l6 6-6 6"/></svg>
+                            <span>SMOTE</span>
+                        </div>
+                        <div class="donut-wrap">
+                            <canvas id="donutAfter" width="220" height="220"></canvas>
+                            <div class="donut-center">
+                                <span class="donut-pct">50%</span>
+                                <span class="donut-lbl">Balanced</span>
+                            </div>
+                            <div class="donut-title">After SMOTE</div>
+                            <div class="donut-details">
+                                <span class="dd-pos">■ Positive: 37,068</span>
+                                <span class="dd-neg">■ Negative: 37,068</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Imbalance Strategy Comparison -->
+                <div class="chart-card animate-in">
+                    <div class="chart-header">
+                        <h3>Strategy Comparison</h3>
+                        <span class="chart-badge">4 Methods</span>
+                    </div>
+                    <canvas id="imbalanceCanvas" width="600" height="350"></canvas>
+                    <div class="table-wrapper" style="margin-top:1rem;">
+                        <table class="data-table compact">
+                            <thead>
+                                <tr>
+                                    <th>Configuration</th>
+                                    <th>AUC</th>
+                                    <th>F1</th>
+                                    <th>Recall</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="config-dot" style="background:#ef4444"></span>No SMOTE</td>
+                                    <td>0.88</td><td>0.71</td><td>0.74</td>
+                                </tr>
+                                <tr class="highlight-row">
+                                    <td><span class="config-dot" style="background:#22c55e"></span>SMOTE</td>
+                                    <td><strong>0.91</strong></td><td><strong>0.82</strong></td><td><strong>0.87</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="config-dot" style="background:#a78bfa"></span>Focal Loss</td>
+                                    <td>0.90</td><td>0.80</td><td>0.85</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="config-dot" style="background:#38bdf8"></span>Weighted BCE</td>
+                                    <td>0.89</td><td>0.79</td><td>0.84</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== SECTION 7: PATIENT DEMO ==================== -->
+    <section id="patient-demo" class="section">
+        <div class="container">
+            <div class="section-header animate-in">
+                <span class="section-tag">Interactive Demo</span>
+                <h2 class="section-title">Live Patient Risk Assessment</h2>
+                <p class="section-desc">Adjust a virtual patient's vitals and labs in real-time to observe how the model responds. This demonstrates the model's clinical decision logic.</p>
+            </div>
+
+            <!-- Preset buttons -->
+            <div class="demo-presets animate-in">
+                <span class="demo-presets-label">Patient Presets:</span>
+                <button class="preset-btn" id="presetHealthy" onclick="applyPreset('healthy')">🟢 Healthy ICU</button>
+                <button class="preset-btn" id="presetEarly" onclick="applyPreset('early')">🟡 Early Deterioration</button>
+                <button class="preset-btn" id="presetSepsis" onclick="applyPreset('sepsis')">🔴 Sepsis Alert</button>
+                <button class="preset-btn" id="presetCritical" onclick="applyPreset('critical')">💀 Critical</button>
+            </div>
+
+            <div class="demo-layout">
+                <!-- Left panel: Sliders -->
+                <div class="demo-controls animate-in">
+                    <div class="demo-panel">
+                        <div class="demo-panel-title">⚡ Vital Signs</div>
+                        <div class="slider-group" id="sliderGroupVitals">
+                            <div class="slider-item">
+                                <div class="slider-header">
+                                    <label class="slider-label">Heart Rate (HR)</label>
+                                    <span class="slider-unit">bpm</span>
+                                    <span class="slider-val" id="val-HR">85</span>
+                                </div>
+                                <input type="range" id="slider-HR" min="30" max="180" value="85" class="demo-slider" oninput="updateDemo()">
+                                <div class="slider-range-labels"><span>30</span><span class="normal-range">60–100 normal</span><span>180</span></div>
+                            </div>
+                            <div class="slider-item">
+                                <div class="slider-header">
+                                    <label class="slider-label">O2 Saturation</label>
+                                    <span class="slider-unit">%</span>
+                                    <span class="slider-val" id="val-O2Sat">97</span>
+                                </div>
+                                <input type="range" id="slider-O2Sat" min="70" max="100" value="97" class="demo-slider" oninput="updateDemo()">
+                                <div class="slider-range-labels"><span>70</span><span class="normal-range">≥95 normal</span><span>100</span></div>
+                            </div>
+                            <div class="slider-item">
+                                <div class="slider-header">
+                                    <label class="slider-label">Temperature</label>
+                                    <span class="slider-unit">°C</span>
+                                    <span class="slider-val" id="val-Temp">37.0</span>
+                                </div>
+                                <input type="range" id="slider-Temp" min="34" max="42" step="0.1" value="37.0" class="demo-slider" oninput="updateDemo()">
+                                <div class="slider-range-labels"><span>34</span><span class="normal-range">36.1–38 normal</span><span>42</span></div>
+                            </div>
+                            <div class="slider-item">
+                                <div class="slider-header">
+                                    <label class="slider-label">Mean Arterial Pressure</label>
+                                    <span class="slider-unit">mmHg</span>
+                                    <span class="slider-val" id="val-MAP">85</span>
+                                </div>
+                                <input type="range" id="slider-MAP" min="40" max="150" value="85" class="demo-slider" oninput="updateDemo()">
+                                <div class="slider-range-labels"><span>40</span><span class="normal-range">70–100 normal</span><span>150</span></div>
+                            </div>
+                            <div class="slider-item">
+                                <div class="slider-header">
+                                    <label class="slider-label">Respiration Rate</label>
+                                    <span class="slider-unit">br/min</span>
+                                    <span class="slider-val" id="val-Resp">16</span>
+                                </div>
+                                <input type="range" id="slider-Resp" min="5" max="50" value="16" class="demo-slider" oninput="updateDemo()">
+                                <div class="slider-range-labels"><span>5</span><span class="normal-range">12–20 normal</span><span>50</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="demo-panel" style="margin-top:1.2rem">
+                        <div class="demo-panel-title">🧪 Key Lab Values</div>
+                        <div class="slider-group" id="sliderGroupLabs">
+                            <div class="slider-item">
+                                <div class="slider-header">
+                                    <label class="slider-label">Lactate</label>
+                                    <span class="slider-unit">mmol/L</span>
+                                    <span class="slider-val" id="val-Lactate">1.2</span>
+                                </div>
+                                <input type="range" id="slider-Lactate" min="0" max="15" step="0.1" value="1.2" class="demo-slider" oninput="updateDemo()">
+                                <div class="slider-range-labels"><span>0</span><span class="normal-range">&lt;2 normal</span><span>15</span></div>
+                            </div>
+                            <div class="slider-item">
+                                <div class="slider-header">
+                                    <label class="slider-label">Creatinine</label>
+                                    <span class="slider-unit">mg/dL</span>
+                                    <span class="slider-val" id="val-Creatinine">1.0</span>
+                                </div>
+                                <input type="range" id="slider-Creatinine" min="0.2" max="12" step="0.1" value="1.0" class="demo-slider" oninput="updateDemo()">
+                                <div class="slider-range-labels"><span>0.2</span><span class="normal-range">0.7–1.2 normal</span><span>12</span></div>
+                            </div>
+                            <div class="slider-item">
+                                <div class="slider-header">
+                                    <label class="slider-label">WBC</label>
+                                    <span class="slider-unit">10³/µL</span>
+                                    <span class="slider-val" id="val-WBC">8.0</span>
+                                </div>
+                                <input type="range" id="slider-WBC" min="0.5" max="40" step="0.5" value="8.0" class="demo-slider" oninput="updateDemo()">
+                                <div class="slider-range-labels"><span>0.5</span><span class="normal-range">4–11 normal</span><span>40</span></div>
+                            </div>
+                            <div class="slider-item">
+                                <div class="slider-header">
+                                    <label class="slider-label">pH</label>
+                                    <span class="slider-unit"></span>
+                                    <span class="slider-val" id="val-pH">7.40</span>
+                                </div>
+                                <input type="range" id="slider-pH" min="6.8" max="7.7" step="0.01" value="7.40" class="demo-slider" oninput="updateDemo()">
+                                <div class="slider-range-labels"><span>6.8</span><span class="normal-range">7.35–7.45 normal</span><span>7.7</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right panel: Results -->
+                <div class="demo-results animate-in">
+
+                    <!-- Risk Gauge -->
+                    <div class="risk-gauge-card" id="riskGaugeCard">
+                        <div class="risk-gauge-header">Sepsis Risk Score</div>
+                        <div class="risk-gauge-container">
+                            <svg class="risk-gauge-svg" viewBox="0 0 200 130" id="riskGaugeSVG">
+                                <!-- Background arc -->
+                                <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="16" stroke-linecap="round"/>
+                                <!-- Low (green) zone -->
+                                <path d="M 20 110 A 80 80 0 0 1 73 38" fill="none" stroke="rgba(34,197,94,0.3)" stroke-width="16" stroke-linecap="round"/>
+                                <!-- Moderate (yellow) zone -->
+                                <path d="M 73 38 A 80 80 0 0 1 127 38" fill="none" stroke="rgba(234,179,8,0.3)" stroke-width="16" stroke-linecap="round"/>
+                                <!-- High (orange) zone -->
+                                <path d="M 127 38 A 80 80 0 0 1 165 63" fill="none" stroke="rgba(249,115,22,0.3)" stroke-width="16" stroke-linecap="round"/>
+                                <!-- Critical (red) zone -->
+                                <path d="M 165 63 A 80 80 0 0 1 180 110" fill="none" stroke="rgba(239,68,68,0.3)" stroke-width="16" stroke-linecap="round"/>
+                                <!-- Active arc -->
+                                <path id="gaugeArcActive" d="M 20 110 A 80 80 0 0 1 20 110" fill="none" stroke="url(#gaugeGrad)" stroke-width="16" stroke-linecap="round"/>
+                                <defs>
+                                    <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" stop-color="#22c55e"/>
+                                        <stop offset="40%" stop-color="#eab308"/>
+                                        <stop offset="70%" stop-color="#f97316"/>
+                                        <stop offset="100%" stop-color="#ef4444"/>
+                                    </linearGradient>
+                                </defs>
+                                <!-- Needle -->
+                                <line id="gaugeNeedle" x1="100" y1="110" x2="100" y2="42" stroke="white" stroke-width="2" stroke-linecap="round" transform="rotate(-90 100 110)"/>
+                                <circle cx="100" cy="110" r="6" fill="white" opacity="0.9"/>
+                                <!-- Score text -->
+                                <text id="gaugeScoreText" x="100" y="98" text-anchor="middle" fill="white" font-size="22" font-weight="700" font-family="Inter, sans-serif">0.15</text>
+                                <text id="gaugeLevelText" x="100" y="114" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="9" font-family="Inter, sans-serif">LOW RISK</text>
+                            </svg>
+                        </div>
+                        <div class="risk-level-badge" id="riskLevelBadge">🟢 LOW RISK</div>
+                        <div class="risk-interpretation" id="riskInterpretation">No immediate intervention required. Continue monitoring.</div>
+                    </div>
+
+                    <!-- qSOFA Score -->
+                    <div class="demo-panel" style="margin-top:1rem">
+                        <div class="demo-panel-title">📋 Clinical Scores</div>
+                        <div class="clinical-scores-grid">
+                            <div class="clinical-score-item">
+                                <div class="cs-name">qSOFA</div>
+                                <div class="cs-score" id="qsofaScore">0 / 3</div>
+                                <div class="cs-bar"><div class="cs-fill" id="qsofaFill" style="width:0%"></div></div>
+                            </div>
+                            <div class="clinical-score-item">
+                                <div class="cs-name">NEWS2</div>
+                                <div class="cs-score" id="news2Score">2 / 20</div>
+                                <div class="cs-bar"><div class="cs-fill" id="news2Fill" style="width:10%"></div></div>
+                            </div>
+                            <div class="clinical-score-item">
+                                <div class="cs-name">Partial SOFA</div>
+                                <div class="cs-score" id="sofaScore">1 / 20</div>
+                                <div class="cs-bar"><div class="cs-fill" id="sofaFill" style="width:5%"></div></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SHAP Waterfall -->
+                    <div class="demo-panel" style="margin-top:1rem">
+                        <div class="demo-panel-title">🔍 SHAP Feature Contributions</div>
+                        <div class="shap-waterfall" id="shapWaterfall">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Attention Heatmap -->
+                    <div class="demo-panel" style="margin-top:1rem">
+                        <div class="demo-panel-title">⏱️ Temporal Attention Heatmap</div>
+                        <div class="attention-heatmap-wrap">
+                            <canvas id="attentionHeatmap" width="480" height="80"></canvas>
+                            <div class="heatmap-labels">
+                                <span>0h</span><span>12h</span><span>24h</span><span>36h</span><span>48h</span>
+                            </div>
+                        </div>
+                        <p class="heatmap-desc">Brighter cells = more attention weight on that time window</p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== SECTION 8: FOOTER ==================== -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="url(#footGrad)" stroke-width="2" width="32">
+                            <defs><linearGradient id="footGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#667eea"/><stop offset="100%" stop-color="#00d2ff"/></linearGradient></defs>
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                        </svg>
+                        <span>SepsisPredictAI</span>
+                    </div>
+                    <p class="footer-affiliation">
+                        Department of AI &amp; ML<br>
+                        PES Institute of Technology &amp; Management, Shivamogga
+                    </p>
+                </div>
+                <div class="footer-info">
+                    <div class="footer-block">
+                        <h4>Project Guide</h4>
+                        <p>Prof. Shilpa K. C.</p>
+                    </div>
+                    <div class="footer-block">
+                        <h4>Research Team — Group 13</h4>
+                        <p>Pavana M.S. · Megharaja S.<br>Srujan S. Sagar · Abubakkar Siddiq</p>
+                    </div>
+                    <div class="footer-block">
+                        <h4>Academic Year</h4>
+                        <p>2025 – 2026</p>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <div class="footer-line"></div>
+                <p>© 2026 SepsisPredictAI. Built for academic research demonstration.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>

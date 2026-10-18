@@ -1,0 +1,19 @@
+{
+  "current_model": {
+    "type": "bilstm_attention",
+    "auroc": 0.9920634920634921,
+    "auprc": 0.9765432098765434,
+    "accuracy_default": 0.6486486486486487,
+    "accuracy_optimal": 0.972972972972973,
+    "f1_optimal": 0.9473684210526315
+  },
+  "hybrid_model": {
+    "type": "bilstm_tcn",
+    "auroc": 1.0,
+    "auprc": 1.0000000000000002,
+    "accuracy_default": 0.24324324324324326,
+    "accuracy_optimal": 1.0,
+    "f1_optimal": 1.0
+  },
+  "updated": true
+}

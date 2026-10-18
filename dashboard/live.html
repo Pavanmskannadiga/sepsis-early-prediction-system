@@ -1,0 +1,3338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Sepsis Live Monitor — ICU Ward</title>
+<meta name="description" content="Real-time sepsis risk monitoring dashboard with BiLSTM AI predictions for ICU patients."/>
+<meta name="theme-color" content="#7c3aed"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<link rel="manifest" href="manifest.json"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<script src="offline_engine.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW registration note:', err));
+    });
+  }
+</script>
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#060614;--bg2:#0d0d24;--bg3:rgba(255,255,255,0.04);
+  --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);
+  --text:#e2e8f0;--dim:#64748b;--bright:#f8fafc;
+  --purple:#7c3aed;--blue:#3b82f6;--cyan:#06b6d4;
+  --green:#22c55e;--yellow:#eab308;--orange:#f97316;--red:#ef4444;
+  --grad:linear-gradient(135deg,#667eea,#764ba2,#06b6d4);
+  --r:14px;--r-sm:8px;--shadow:0 8px 32px rgba(0,0,0,.5);
+  --trans:.25s cubic-bezier(.4,0,.2,1);
+}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);
+  min-height:100vh;overflow-x:hidden;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% 10%,rgba(102,126,234,.06) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%,rgba(6,182,212,.05) 0%,transparent 60%);
+}
+/* ── Header ─────────────────────────────────────────────────────── */
+.header{
+  position:sticky;top:0;z-index:100;
+  background:rgba(6,6,20,.85);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  padding:.9rem 1.5rem;
+  display:flex;align-items:center;gap:1rem;flex-wrap:wrap;
+}
+.header-logo{
+  font-size:1.1rem;font-weight:800;letter-spacing:-.02em;
+  background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.header-subtitle{font-size:.78rem;color:var(--dim);margin-left:.25rem;}
+.header-spacer{flex:1}
+.conn-badge{
+  display:flex;align-items:center;gap:.4rem;
+  font-size:.75rem;font-weight:600;padding:.3rem .8rem;
+  border-radius:20px;border:1px solid;transition:var(--trans);
+}
+.conn-badge.connected{color:var(--green);border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.08)}
+.conn-badge.disconnected{color:var(--red);border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.08)}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:currentColor;animation:pulse-dot 1.5s ease-in-out infinite}
+@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+.model-badge{
+  font-size:.72rem;padding:.28rem .7rem;border-radius:20px;
+  background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.35);color:#a78bfa;
+}
+.tick-badge{font-size:.72rem;color:var(--dim);font-family:'JetBrains Mono',monospace}
+/* ── Alert Banner ─────────────────────────────────────────────── */
+.alert-banner{
+  background:linear-gradient(135deg,rgba(239,68,68,.18),rgba(249,115,22,.1));
+  border-bottom:1px solid rgba(239,68,68,.3);
+  padding:.6rem 1.5rem;display:none;align-items:center;gap:.75rem;
+  animation:slideDown .3s ease;
+}
+.alert-banner.visible{display:flex}
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+.alert-icon{font-size:1.1rem;animation:blink .7s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.alert-text{font-size:.85rem;font-weight:600;color:#fca5a5;flex:1}
+.alert-close{background:none;border:none;color:var(--dim);cursor:pointer;font-size:1rem;padding:.2rem}
+/* ── Layout ──────────────────────────────────────────────────── */
+.main{padding:1.25rem;display:flex;flex-direction:column;gap:1.25rem}
+.section-title{font-size:.78rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.85rem}
+/* ── Stats Row ───────────────────────────────────────────────── */
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:.85rem}
+.stat-card{
+  background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);
+  padding:.9rem 1rem;display:flex;flex-direction:column;gap:.3rem;transition:var(--trans);
+  cursor:pointer;user-select:none;
+}
+.stat-card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.stat-card.active-filter{
+  border-color:var(--cyan) !important;background:rgba(6,182,212,.15) !important;
+  box-shadow:0 0 16px rgba(6,182,212,.35) !important;transform:translateY(-2px);
+}
+.stat-label{font-size:.7rem;color:var(--dim);font-weight:500;text-transform:uppercase;letter-spacing:.06em}
+.stat-value{font-size:1.6rem;font-weight:800;letter-spacing:-.03em}
+.stat-value.green{color:var(--green)}.stat-value.yellow{color:var(--yellow)}
+.stat-value.orange{color:var(--orange)}.stat-value.red{color:var(--red)}
+.stat-value.blue{color:var(--blue)}
+.stat-sub{font-size:.68rem;color:var(--dim)}
+/* ── Ward Grid ───────────────────────────────────────────────── */
+.ward-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1rem}
+/* ── Patient Card ────────────────────────────────────────────── */
+.patient-card{
+  background:var(--bg2);border:1.5px solid var(--border);border-radius:var(--r);
+  overflow:hidden;transition:var(--trans);position:relative;cursor:pointer;
+}
+.patient-card:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.patient-card.risk-low   {border-color:rgba(34,197,94,.3)}
+.patient-card.risk-moderate{border-color:rgba(234,179,8,.35)}
+.patient-card.risk-high  {border-color:rgba(249,115,22,.4)}
+.patient-card.risk-critical{
+  border-color:rgba(239,68,68,.6);
+  box-shadow:0 0 24px rgba(239,68,68,.2);
+  animation:cardPulse 2s ease-in-out infinite;
+}
+.patient-card.selected-card{
+  outline:2px solid var(--cyan);
+  box-shadow:0 0 20px rgba(6,182,212,.4);
+}
+@keyframes cardPulse{0%,100%{box-shadow:0 0 12px rgba(239,68,68,.2)}50%{box-shadow:0 0 30px rgba(239,68,68,.4)}}
+.card-header{
+  padding:.8rem 1rem;display:flex;align-items:center;gap:.6rem;
+  border-bottom:1px solid var(--border);
+}
+.view-chart-btn{
+  background:rgba(255,255,255,.08);border:1px solid var(--border);color:var(--text);
+  font-size:.65rem;font-weight:600;padding:.2rem .5rem;border-radius:6px;
+  cursor:pointer;transition:var(--trans);white-space:nowrap;
+}
+.view-chart-btn:hover{background:var(--purple);color:#fff;border-color:var(--purple)}
+.card-bed{
+  font-size:.62rem;font-weight:700;color:var(--dim);
+  background:rgba(255,255,255,.05);padding:.15rem .45rem;
+  border-radius:4px;border:1px solid var(--border);
+  font-family:'JetBrains Mono',monospace;
+}
+.card-name{font-size:.9rem;font-weight:700;color:var(--bright);flex:1}
+.card-meta{font-size:.72rem;color:var(--dim)}
+.risk-pill{
+  font-size:.68rem;font-weight:700;padding:.2rem .6rem;border-radius:12px;
+  letter-spacing:.04em;transition:var(--trans);
+}
+.risk-pill.LOW     {background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3)}
+.risk-pill.MODERATE{background:rgba(234,179,8,.15);color:#facc15;border:1px solid rgba(234,179,8,.3)}
+.risk-pill.HIGH    {background:rgba(249,115,22,.15);color:#fb923c;border:1px solid rgba(249,115,22,.3)}
+.risk-pill.CRITICAL{background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.5);animation:blink .7s ease-in-out infinite}
+/* ── Gauge inside card ─────────────────────────────────────────── */
+.card-gauge-row{display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem .5rem}
+.mini-gauge{position:relative;width:64px;height:40px;flex-shrink:0}
+.mini-gauge svg{width:100%;height:100%}
+.gauge-score{
+  position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+  font-size:.65rem;font-weight:800;color:var(--bright);
+  font-family:'JetBrains Mono',monospace;white-space:nowrap;
+}
+.card-vitals{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:.3rem}
+.vital-chip{
+  background:rgba(255,255,255,.04);border-radius:6px;padding:.25rem .4rem;
+  display:flex;flex-direction:column;
+}
+.vital-chip-label{font-size:.58rem;color:var(--dim);font-weight:500}
+.vital-chip-val{font-size:.78rem;font-weight:700;font-family:'JetBrains Mono',monospace}
+.vital-chip-val.ok{color:var(--text)}
+.vital-chip-val.warn{color:var(--yellow)}
+.vital-chip-val.danger{color:var(--red)}
+/* ── Sparkline ─────────────────────────────────────────────────── */
+.card-sparkline{padding:0 1rem .75rem}
+.sparkline-label{font-size:.6rem;color:var(--dim);margin-bottom:.25rem}
+canvas.sparkline{width:100%;height:36px;display:block;border-radius:4px}
+/* ── SHAP mini ─────────────────────────────────────────────────── */
+.card-shap{padding:.5rem 1rem .8rem;border-top:1px solid var(--border)}
+.shap-row{display:flex;align-items:center;gap:.4rem;margin-bottom:.25rem;font-size:.7rem}
+.shap-name{width:80px;color:var(--dim);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.shap-track{flex:1;height:8px;background:rgba(255,255,255,.05);border-radius:4px;overflow:hidden;position:relative}
+.shap-fill{height:100%;border-radius:4px;position:absolute;top:0;transition:width .4s ease}
+.shap-fill.pos{background:linear-gradient(90deg,#ef4444,#f97316);left:50%}
+.shap-fill.neg{background:linear-gradient(90deg,#3b82f6,#06b6d4);right:50%;left:auto}
+.shap-center{position:absolute;top:0;bottom:0;left:50%;width:1px;background:rgba(255,255,255,.15)}
+.shap-val{width:38px;font-family:'JetBrains Mono',monospace;text-align:right;flex-shrink:0}
+.shap-val.pos{color:#f87171}.shap-val.neg{color:#60a5fa}
+/* ── Clinical Scores strip ────────────────────────────────────── */
+.card-scores{
+  padding:.5rem 1rem;border-top:1px solid var(--border);
+  display:flex;gap:.5rem;
+}
+.score-chip{
+  flex:1;background:rgba(255,255,255,.04);border-radius:6px;padding:.3rem .5rem;
+  display:flex;flex-direction:column;align-items:center;
+}
+.score-chip-name{font-size:.6rem;color:var(--dim);font-weight:500}
+.score-chip-val{font-size:.88rem;font-weight:800;font-family:'JetBrains Mono',monospace}
+/* ── Card footer ──────────────────────────────────────────────── */
+.card-footer{
+  padding:.45rem 1rem;border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.card-footer-text{font-size:.65rem;color:var(--dim)}
+.card-footer-traj{font-size:.65rem;font-weight:600}
+.traj-stable{color:var(--green)}.traj-deteriorating{color:var(--yellow)}
+.traj-septic{color:var(--red)}.traj-recovering{color:var(--cyan)}
+/* ── Interp toast at bottom of card ──────────────────────────── */
+.card-interp{
+  padding:.5rem 1rem;font-size:.7rem;color:var(--dim);line-height:1.4;
+  border-top:1px solid var(--border);font-style:italic;
+}
+/* ── Detail modal ─────────────────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);
+  z-index:500;display:none;align-items:center;justify-content:center;padding:1rem;
+}
+.modal-overlay.open{display:flex}
+.modal{
+  background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);
+  width:100%;max-width:680px;max-height:90vh;overflow-y:auto;
+  box-shadow:0 24px 80px rgba(0,0,0,.7);
+}
+.modal-header{
+  padding:1rem 1.25rem;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:.75rem;
+}
+.modal-title{font-size:1rem;font-weight:700;flex:1}
+.modal-close{
+  background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.2rem;
+  width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  transition:var(--trans);
+}
+.modal-close:hover{background:rgba(255,255,255,.08);color:var(--text)}
+.modal-body{padding:1.25rem;display:flex;flex-direction:column;gap:1rem}
+.modal-section-title{font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem}
+.vitals-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
+.vital-box{
+  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:.5rem .6rem;
+}
+.vital-box-label{font-size:.62rem;color:var(--dim)}
+.vital-box-val{font-size:1.1rem;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:.1rem}
+.vital-box-unit{font-size:.6rem;color:var(--dim)}
+.history-chart-wrap{height:120px;position:relative}
+canvas.history-chart{width:100%;height:100%}
+/* ── Scrollbar ────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
+/* ── Loading ─────────────────────────────────────────────────── */
+.loading-overlay{
+  position:fixed;inset:0;background:var(--bg);z-index:999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem;
+}
+.loading-spinner{
+  width:48px;height:48px;border:3px solid rgba(102,126,234,.2);
+  border-top-color:#667eea;border-radius:50%;animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:.9rem;color:var(--dim)}
+/* ── Responsive ───────────────────────────────────────────────── */
+@media(max-width:768px){
+  .stats-row{grid-template-columns:repeat(3,1fr)}
+  .vitals-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:480px){
+  .stats-row{grid-template-columns:repeat(2,1fr)}
+  .ward-grid{grid-template-columns:1fr}
+}
+
+/* ── Sidebar Control Center ───────────────────────────────────── */
+.control-sidebar {
+  position: fixed; top: 0; right: -380px; width: 360px; height: 100vh;
+  background: var(--bg2); border-left: 1px solid var(--border);
+  box-shadow: -10px 0 30px rgba(0,0,0,0.5); z-index: 200;
+  display: flex; flex-direction: column; transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.control-sidebar.open { right: 0; }
+.sidebar-header {
+  padding: 1.2rem; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sidebar-header h3 { font-size: 0.95rem; font-weight: 700; color: var(--bright); margin: 0; }
+.sidebar-close {
+  background: none; border: none; color: var(--dim); cursor: pointer; font-size: 1.1rem;
+  width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  transition: var(--trans);
+}
+.sidebar-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.sidebar-body { padding: 1.2rem; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 1.2rem; }
+.sidebar-tabs { display: flex; background: rgba(0,0,0,0.2); padding: 0.2rem; border-radius: 20px; border: 1px solid var(--border); }
+.sidebar-tabs .tab-btn {
+  flex: 1; background: none; border: none; padding: 0.35rem 0.5rem; font-size: 0.72rem; font-weight: 600;
+  color: var(--dim); border-radius: 15px; cursor: pointer; transition: var(--trans);
+}
+.sidebar-tabs .tab-btn.active { background: var(--purple); color: var(--bright); }
+.tab-content { display: none; flex-direction: column; gap: 1rem; }
+.tab-content.active { display: flex; }
+.panel-section { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.9rem; }
+.panel-section h4 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; color: var(--cyan); letter-spacing: 0.05em; margin-bottom: 0.6rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.3rem; margin-top: 0;}
+.panel-desc { font-size: 0.68rem; color: var(--dim); line-height: 1.4; margin-bottom: 0.5rem; }
+.stat-grid { display: grid; grid-template-columns: 1fr; gap: 0.4rem; font-size: 0.72rem; }
+.mini-stat { display: flex; justify-content: space-between; padding: 0.2rem 0; border-bottom: 1px dashed rgba(255,255,255,0.03); }
+.mini-stat span { color: var(--dim); }
+.mini-stat strong.text-green { color: var(--green); }
+.mini-stat strong.text-purple { color: var(--purple); }
+.action-btn {
+  width: 100%; border: none; padding: 0.5rem; border-radius: var(--r-sm); font-size: 0.72rem; font-weight: 600;
+  cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; gap: 0.3rem; transition: var(--trans);
+}
+.action-btn.red { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+.action-btn.red:hover { background: rgba(239,68,68,0.25); border-color: rgba(239,68,68,0.5); }
+.action-btn.green { background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3); color: #a7f3d0; }
+.action-btn.green:hover { background: rgba(34,197,94,0.25); border-color: rgba(34,197,94,0.5); }
+.action-btn.purple { background: var(--purple); color: #fff; }
+.action-btn.purple:hover { opacity: 0.9; }
+.action-btn.blue { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; }
+.action-btn.blue:hover { background: rgba(59,130,246,0.25); border-color: rgba(59,130,246,0.5); }
+.form-group { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
+.form-group label { font-size: 0.65rem; color: var(--dim); font-weight: 500; text-transform: uppercase; margin-bottom: 0.15rem; }
+.form-input, .form-select {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; padding: 0.35rem 0.5rem;
+  color: var(--text); font-size: 0.72rem; outline: none; transition: var(--trans); width: 100%;
+}
+.form-input:focus, .form-select:focus { border-color: var(--purple); background: rgba(0,0,0,0.5); }
+
+/* ── Extreme CDSS Styling ─────────────────────────────────────── */
+.model-select-dropdown {
+  background: rgba(124,58,237,0.18); border: 1.5px solid rgba(124,58,237,0.45); color: #c4b5fd;
+  font-size: 0.74rem; font-weight: 700; padding: 0.32rem 0.8rem; border-radius: 20px;
+  outline: none; cursor: pointer; transition: var(--trans);
+}
+.model-select-dropdown:hover, .model-select-dropdown:focus {
+  background: rgba(124,58,237,0.3); border-color: #a78bfa; box-shadow: 0 0 12px rgba(124,58,237,0.3);
+}
+.model-select-dropdown option { background: var(--bg2); color: var(--text); }
+.cdss-btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.8rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
+.btn-cdss {
+  flex: 1; min-width: 140px; padding: 0.5rem 0.8rem; border-radius: var(--r-sm); font-size: 0.72rem; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.4rem; transition: var(--trans); border: 1px solid;
+}
+.btn-cdss.purple { background: rgba(124,58,237,0.18); border-color: rgba(124,58,237,0.4); color: #c4b5fd; }
+.btn-cdss.purple:hover { background: rgba(124,58,237,0.35); border-color: #a78bfa; }
+.btn-cdss.cyan { background: rgba(6,182,212,0.15); border-color: rgba(6,182,212,0.4); color: #67e8f9; }
+.btn-cdss.cyan:hover { background: rgba(6,182,212,0.3); border-color: #22d3ee; }
+.btn-cdss.green { background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.4); color: #86efac; }
+.btn-cdss.green:hover { background: rgba(34,197,94,0.3); border-color: #4ade80; }
+
+/* What-If Drawer & Modal */
+.whatif-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.whatif-slider-group { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.75rem; }
+.whatif-slider-header { display: flex; justify-content: space-between; font-size: 0.72rem; font-weight: 600; margin-bottom: 0.35rem; }
+.whatif-slider { width: 100%; accent-color: var(--purple); cursor: pointer; }
+.whatif-comparison-box {
+  background: linear-gradient(135deg, rgba(124,58,237,0.12), rgba(6,182,212,0.08));
+  border: 1px solid rgba(124,58,237,0.3); border-radius: var(--r); padding: 1rem;
+  display: flex; flex-direction: column; gap: 0.8rem;
+}
+.whatif-score-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; text-align: center; }
+.whatif-card { background: rgba(0,0,0,0.3); border-radius: var(--r-sm); padding: 0.6rem; border: 1px solid var(--border); }
+.whatif-delta-badge {
+  text-align: center; font-size: 0.82rem; font-weight: 800; padding: 0.4rem; border-radius: var(--r-sm);
+  font-family: 'JetBrains Mono', monospace;
+}
+.whatif-delta-badge.improved { background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid rgba(34,197,94,0.4); }
+.whatif-delta-badge.worse { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.4); }
+.whatif-presets { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.preset-chip {
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--text);
+  font-size: 0.65rem; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 12px; cursor: pointer; transition: var(--trans);
+}
+.preset-chip:hover { background: var(--purple); color: #fff; border-color: transparent; }
+
+/* Surviving Sepsis Bundle Checklist */
+.ssc-container { display: flex; flex-direction: column; gap: 0.6rem; }
+.ssc-card {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 0.75rem 0.9rem; display: flex; align-items: flex-start; gap: 0.75rem; transition: var(--trans);
+}
+.ssc-card.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); opacity: 0.85; }
+.ssc-checkbox { width: 18px; height: 18px; accent-color: var(--green); margin-top: 0.15rem; cursor: pointer; }
+.ssc-content { flex: 1; }
+.ssc-title { font-size: 0.78rem; font-weight: 700; color: var(--bright); }
+.ssc-meta { font-size: 0.68rem; color: var(--dim); margin-top: 0.2rem; }
+.ssc-rationale { font-size: 0.65rem; color: var(--cyan); margin-top: 0.2rem; font-style: italic; }
+.ssc-badge-prio {
+  font-size: 0.58rem; font-weight: 800; padding: 0.15rem 0.4rem; border-radius: 4px; text-transform: uppercase;
+}
+.ssc-badge-prio.IMMEDIATE { background: rgba(239,68,68,0.25); color: #f87171; border: 1px solid rgba(239,68,68,0.5); }
+.ssc-badge-prio.HIGH { background: rgba(249,115,22,0.2); color: #fb923c; border: 1px solid rgba(249,115,22,0.4); }
+.ssc-badge-prio.STANDARD { background: rgba(59,130,246,0.2); color: #93c5fd; border: 1px solid rgba(59,130,246,0.4); }
+
+/* FHIR Code Box */
+.fhir-box {
+  background: rgba(0,0,0,0.6); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: #a5f3fc;
+  max-height: 280px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+}
+
+/* ── Patient Condition Panel ──────────────────────────────── */
+.condition-panel {
+  background: linear-gradient(135deg, rgba(13,13,36,0.97), rgba(6,6,20,0.97));
+  border: 1.5px solid rgba(124,58,237,0.3);
+  border-radius: var(--r); margin: 0 0 1.25rem 0;
+  overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+.condition-panel-header {
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.85rem 1.2rem; border-bottom: 1px solid var(--border);
+  background: linear-gradient(90deg, rgba(124,58,237,0.12), transparent);
+}
+.condition-panel-header h3 {
+  font-size: 0.88rem; font-weight: 800; color: var(--bright);
+  margin: 0; letter-spacing: -0.01em;
+}
+.condition-panel-tabs {
+  display: flex; gap: 0; background: rgba(0,0,0,0.25);
+  border-bottom: 1px solid var(--border); padding: 0.4rem 1.2rem;
+  overflow-x: auto; gap: 0.4rem;
+}
+.cond-tab {
+  background: none; border: 1px solid transparent; border-radius: 20px;
+  padding: 0.3rem 0.75rem; font-size: 0.7rem; font-weight: 600;
+  color: var(--dim); cursor: pointer; white-space: nowrap; transition: var(--trans);
+}
+.cond-tab.active { background: var(--purple); color: #fff; border-color: transparent; }
+.cond-tab:hover:not(.active) { border-color: var(--border2); color: var(--text); }
+.condition-body { padding: 1.2rem; display: none; }
+.condition-body.active { display: block; }
+.cond-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media(max-width:680px) { .cond-grid { grid-template-columns: 1fr; } }
+.cond-block {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 0.85rem;
+}
+.cond-block h4 {
+  font-size: 0.72rem; text-transform: uppercase; font-weight: 700;
+  color: var(--cyan); letter-spacing: 0.07em; margin: 0 0 0.55rem;
+}
+.cond-block p, .cond-block li {
+  font-size: 0.74rem; color: var(--text); line-height: 1.55; margin: 0.25rem 0;
+}
+.cond-block ul { padding-left: 1rem; }
+.cond-risk-badge {
+  display: inline-block; padding: 0.2rem 0.65rem; border-radius: 12px;
+  font-size: 0.68rem; font-weight: 800; margin-bottom: 0.5rem;
+}
+.cond-risk-badge.LOW    { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.35); }
+.cond-risk-badge.MODERATE { background: rgba(234,179,8,0.15); color: #facc15; border: 1px solid rgba(234,179,8,0.35); }
+.cond-risk-badge.HIGH   { background: rgba(249,115,22,0.15); color: #fb923c; border: 1px solid rgba(249,115,22,0.35); }
+.cond-risk-badge.CRITICAL { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.5); }
+.treat-step {
+  display: flex; gap: 0.6rem; align-items: flex-start;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 0.5rem 0.7rem; margin-bottom: 0.5rem;
+}
+.treat-step-num {
+  min-width: 22px; height: 22px; border-radius: 50%;
+  background: var(--purple); color: #fff;
+  font-size: 0.65rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 0.05rem;
+}
+.treat-step-text { font-size: 0.73rem; color: var(--text); line-height: 1.45; }
+.treat-step-text strong { color: var(--cyan); }
+.cond-selector-row {
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.6rem 1.2rem; border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.15);
+}
+.cond-selector-row label { font-size: 0.7rem; color: var(--dim); font-weight: 600; white-space: nowrap; }
+.cond-patient-sel {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.3rem 0.6rem; color: var(--text); font-size: 0.72rem; outline: none;
+  cursor: pointer; flex: 1; max-width: 260px; transition: var(--trans);
+}
+.cond-patient-sel:focus { border-color: var(--purple); }
+
+/* ── AI Chatbot Widget ────────────────────────────────────── */
+.chatbot-fab {
+  position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 600;
+  width: 56px; height: 56px; border-radius: 50%;
+  background: linear-gradient(135deg, #7c3aed, #06b6d4);
+  border: none; cursor: pointer; box-shadow: 0 4px 24px rgba(124,58,237,0.5);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; transition: transform 0.2s, box-shadow 0.2s;
+  animation: fabPulse 3s ease-in-out infinite;
+}
+@keyframes fabPulse {
+  0%,100% { box-shadow: 0 4px 24px rgba(124,58,237,0.45); }
+  50% { box-shadow: 0 4px 36px rgba(6,182,212,0.55); }
+}
+.chatbot-fab:hover { transform: scale(1.1); }
+.chatbot-fab .fab-badge {
+  position: absolute; top: -4px; right: -4px;
+  background: var(--red); color: #fff; border-radius: 50%;
+  width: 18px; height: 18px; font-size: 0.6rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--bg); display: none;
+}
+.chatbot-window {
+  position: fixed; bottom: 5rem; right: 1.5rem; z-index: 600;
+  width: 380px; max-width: calc(100vw - 2rem);
+  height: 520px; max-height: 80vh;
+  background: var(--bg2); border: 1.5px solid rgba(124,58,237,0.4);
+  border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+  display: none; flex-direction: column; overflow: hidden;
+  transform-origin: bottom right;
+  animation: chatOpen 0.25s cubic-bezier(0.34,1.56,0.64,1);
+}
+.chatbot-window.open { display: flex; }
+@keyframes chatOpen {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.chat-header {
+  display: flex; align-items: center; gap: 0.65rem;
+  padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(6,182,212,0.1));
+  flex-shrink: 0;
+}
+.chat-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: linear-gradient(135deg, #7c3aed, #06b6d4);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem; flex-shrink: 0;
+  box-shadow: 0 0 12px rgba(124,58,237,0.4);
+}
+.chat-header-info { flex: 1; }
+.chat-header-info h4 { font-size: 0.83rem; font-weight: 800; color: var(--bright); margin: 0; }
+.chat-header-info span { font-size: 0.65rem; color: var(--green); }
+.chat-close-btn {
+  background: none; border: none; color: var(--dim); cursor: pointer;
+  font-size: 1rem; width: 26px; height: 26px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; transition: var(--trans);
+}
+.chat-close-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+.chat-messages {
+  flex: 1; overflow-y: auto; padding: 0.85rem; display: flex;
+  flex-direction: column; gap: 0.7rem; scroll-behavior: smooth;
+}
+.chat-messages::-webkit-scrollbar { width: 4px; }
+.chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+.chat-msg {
+  display: flex; gap: 0.5rem; align-items: flex-start;
+  animation: msgIn 0.2s ease;
+}
+@keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.chat-msg.user { flex-direction: row-reverse; }
+.chat-msg-avatar {
+  width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 0.75rem;
+}
+.chat-msg.bot  .chat-msg-avatar { background: linear-gradient(135deg,#7c3aed,#06b6d4); }
+.chat-msg.user .chat-msg-avatar { background: rgba(255,255,255,0.1); border: 1px solid var(--border); }
+.chat-msg-bubble {
+  max-width: 78%; border-radius: 14px; padding: 0.55rem 0.85rem;
+  font-size: 0.76rem; line-height: 1.5; word-wrap: break-word;
+}
+.chat-msg.bot  .chat-msg-bubble {
+  background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.25);
+  color: var(--text); border-radius: 4px 14px 14px 14px;
+}
+.chat-msg.user .chat-msg-bubble {
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  color: #fff; border-radius: 14px 4px 14px 14px;
+}
+.chat-msg-bubble strong { color: #67e8f9; }
+.chat-msg-bubble .tag {
+  display: inline-block; background: rgba(6,182,212,0.2); color: var(--cyan);
+  font-size: 0.64rem; font-weight: 700; padding: 0.1rem 0.4rem;
+  border-radius: 6px; margin: 0.1rem 0.15rem 0 0;
+}
+.chat-typing {
+  display: flex; gap: 4px; align-items: center; padding: 0.55rem 0.85rem;
+  background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.25);
+  border-radius: 4px 14px 14px 14px; max-width: 80px;
+}
+.chat-typing span {
+  width: 6px; height: 6px; background: var(--cyan); border-radius: 50%;
+  animation: typingDot 1.4s ease-in-out infinite;
+}
+.chat-typing span:nth-child(2) { animation-delay: 0.2s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingDot { 0%,80%,100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+.chat-quick-btns {
+  display: flex; gap: 0.4rem; flex-wrap: wrap;
+  padding: 0.5rem 0.85rem 0; border-top: 1px solid var(--border);
+  background: rgba(0,0,0,0.2);
+}
+.chat-quick-btn {
+  background: rgba(124,58,237,0.12); border: 1px solid rgba(124,58,237,0.3);
+  color: #c4b5fd; font-size: 0.64rem; font-weight: 600; padding: 0.25rem 0.55rem;
+  border-radius: 12px; cursor: pointer; transition: var(--trans); white-space: nowrap;
+}
+.chat-quick-btn:hover { background: rgba(124,58,237,0.3); border-color: #a78bfa; color: #fff; }
+.chat-input-row {
+  display: flex; gap: 0.4rem; padding: 0.65rem 0.85rem;
+  border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.chat-input {
+  flex: 1; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 22px; padding: 0.45rem 0.9rem; color: var(--text);
+  font-size: 0.75rem; outline: none; transition: var(--trans);
+  font-family: 'Inter', sans-serif;
+}
+.chat-input:focus { border-color: var(--purple); background: rgba(0,0,0,0.6); }
+.chat-send-btn {
+  background: linear-gradient(135deg, #7c3aed, #06b6d4); border: none;
+  border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 0.85rem; transition: transform 0.15s, opacity 0.15s;
+}
+.chat-send-btn:hover { transform: scale(1.1); }
+.chat-send-btn:active { transform: scale(0.95); }
+</style>
+</head>
+<body>
+
+<!-- Control Sidebar -->
+<div class="control-sidebar" id="controlSidebar">
+  <div class="sidebar-header">
+    <h3>🎛️ Clinical Control Center</h3>
+    <button class="sidebar-close" onclick="toggleSidebar(false)">✕</button>
+  </div>
+  <div class="sidebar-body">
+    <div class="sidebar-tabs">
+      <button class="tab-btn active" id="btn-sim-tab" onclick="switchSidebarTab('sim-tab')">📡 Simulator</button>
+      <button class="tab-btn" id="btn-ingest-tab" onclick="switchSidebarTab('ingest-tab')">📥 Manual Ingest</button>
+    </div>
+
+    <!-- Tab 1: Simulator Info & Stats -->
+    <div class="tab-content active" id="sim-tab">
+      <div class="panel-section">
+        <h4>System Status</h4>
+        <div class="stat-grid">
+          <div class="mini-stat"><span>Server Status:</span> <strong style="color:var(--green)">RUNNING</strong></div>
+          <div class="mini-stat"><span>HL7 Gateway:</span> <strong style="color:var(--purple)">Port 2575</strong></div>
+          <div class="mini-stat"><span>Active Monitors:</span> <span id="sbWsConns">—</span></div>
+          <div class="mini-stat"><span>Server Uptime:</span> <span id="sbUptime">—</span></div>
+          <div class="mini-stat"><span>Active Model:</span> <span id="sbModelName">—</span></div>
+          <div class="mini-stat"><span>Total Ticks:</span> <span id="sbTicks">—</span></div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h4>Bedside Simulator Actions</h4>
+        <p class="panel-desc">Shift a patient's clinical trajectory to septic or stable to test early warnings.</p>
+        <div style="display:flex; flex-direction:column; gap:0.6rem; margin-top:0.6rem;">
+          <div class="form-group" style="margin-bottom:0.2rem;">
+            <label>Select Patient</label>
+            <select id="simTargetPid" class="form-select">
+              <!-- Filled dynamically -->
+            </select>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.4rem;">
+            <button class="action-btn red" onclick="updatePatientTrajectory('septic')">🚨 Sepsis</button>
+            <button class="action-btn red" onclick="updatePatientTrajectory('deteriorating')">📈 Deteriorate</button>
+            <button class="action-btn green" onclick="updatePatientTrajectory('stable')">🟢 Stabilize</button>
+            <button class="action-btn green" onclick="updatePatientTrajectory('recovering')">🩹 Recover</button>
+          </div>
+          <div id="simActionResult" style="margin-top:0.3rem; font-size:0.68rem; text-align:center; color:var(--cyan); min-height:1rem;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Manual Ingest Device -->
+    <div class="tab-content" id="ingest-tab">
+      <form id="manualIngestForm" onsubmit="submitManualIngest(event)">
+        <div class="form-group">
+          <label>Target Bed / Patient</label>
+          <select id="ingestPid" required class="form-select">
+            <!-- options filled dynamically -->
+          </select>
+        </div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.5rem;">
+          <div class="form-group">
+            <label>Heart Rate (HR)</label>
+            <input type="number" id="ingestHR" step="any" placeholder="bpm" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>SpO2 (O2Sat)</label>
+            <input type="number" id="ingestO2Sat" step="any" min="0" max="100" placeholder="%" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Temperature</label>
+            <input type="number" id="ingestTemp" step="any" placeholder="°C" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Systolic BP</label>
+            <input type="number" id="ingestSBP" step="any" placeholder="mmHg" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>MAP</label>
+            <input type="number" id="ingestMAP" step="any" placeholder="mmHg" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Resp Rate</label>
+            <input type="number" id="ingestResp" step="any" placeholder="bpm" class="form-input">
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border); margin-top:0.75rem; padding-top:0.75rem;">
+          <h5 style="font-size:0.7rem; text-transform:uppercase; color:var(--dim); margin-bottom:0.4rem;">Lab Values</h5>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.25rem;">
+            <div class="form-group">
+              <label>Lactate</label>
+              <input type="number" id="ingestLactate" step="any" placeholder="mmol/L" class="form-input">
+            </div>
+            <div class="form-group">
+              <label>Creatinine</label>
+              <input type="number" id="ingestCreatinine" step="any" placeholder="mg/dL" class="form-input">
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:0.5rem; margin-top:1.2rem;">
+          <button type="submit" class="action-btn purple" style="flex:1;">Ingest API</button>
+          <button type="button" class="action-btn blue" style="flex:1;" onclick="submitManualFHIR()">FHIR Observation</button>
+        </div>
+        
+        <div id="ingestResult" style="margin-top:0.5rem; font-size:0.7rem; padding:0.4rem; border-radius:4px; display:none; text-align:center;"></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Loading -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">Connecting to ICU data stream…</div>
+</div>
+
+<!-- Header -->
+<header class="header">
+  <div style="display:flex; align-items:center; gap:0.6rem;">
+    <a href="index.html" style="color:var(--text); text-decoration:none; display:flex; align-items:center; gap:0.4rem; padding:0.25rem 0.6rem; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid var(--border); font-size:0.75rem; font-weight:600;" title="Back to Research & Overview">
+      ← <span>Research</span>
+    </a>
+    <div>
+      <span class="header-logo">🏥 Sepsis Live Monitor</span>
+      <span class="header-subtitle" style="display:inline-block;">Standalone CDSS</span>
+    </div>
+  </div>
+  <div class="header-spacer"></div>
+  <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+    <select id="activeModelSelect" onchange="switchActiveModel(this.value)" class="model-select-dropdown" title="Dynamic Deep Learning Architecture Switcher" style="padding:0.25rem 0.5rem; font-size:0.72rem;">
+      <option value="bilstm_attention">🧠 BiLSTM + Attention</option>
+      <option value="transformer">🔮 Transformer Encoder</option>
+      <option value="tcn">⚡ TCN (Dilated ConvNet)</option>
+      <option value="ensemble">🌟 Deep Sepsis Ensemble</option>
+      <option value="heuristic">📋 Clinical Heuristic</option>
+    </select>
+    <button id="modeSwitcherBtn" onclick="openSettingsModal()" style="background:rgba(124,58,237,0.18); border:1px solid rgba(124,58,237,0.4); color:#c4b5fd; font-size:0.72rem; font-weight:700; padding:0.3rem 0.75rem; border-radius:20px; cursor:pointer; display:flex; align-items:center; gap:0.35rem; transition:var(--trans);">
+      <span id="modeIcon">⚡</span> <span id="modeText">Offline Mode</span>
+    </button>
+    <span class="tick-badge" id="tickBadge" style="font-size:0.7rem;">Tick —</span>
+    <div class="conn-badge connected" id="connBadge" onclick="openSettingsModal()" style="cursor:pointer;" title="Click to open Server & Connectivity Settings">
+      <span class="conn-dot"></span>
+      <span id="connText">Running</span>
+    </div>
+    <button id="openControlsBtn" onclick="toggleSidebar(true)" style="background:var(--purple); border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:0.72rem; font-weight:600; padding:0.3rem 0.75rem; border-radius:20px; cursor:pointer; display:flex; align-items:center; gap:0.35rem; transition:var(--trans);">
+      🎛️ Controls
+    </button>
+  </div>
+</header>
+
+<!-- Alert Banner -->
+<div class="alert-banner" id="alertBanner">
+  <span class="alert-icon">🚨</span>
+  <span class="alert-text" id="alertText">Sepsis Alert</span>
+  <button class="alert-close" onclick="document.getElementById('alertBanner').classList.remove('visible')">✕</button>
+</div>
+
+<!-- Main -->
+<main class="main">
+
+  <!-- Stats Row -->
+  <div>
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+      <span>Ward Overview</span>
+      <span style="font-size:0.68rem; font-weight:400; color:var(--dim); text-transform:none;">Click any stat card to filter ICU monitor beds</span>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card" id="cardFilterAll" onclick="filterWardByRisk(null)" title="View all patients in ICU monitor">
+        <div class="stat-label">Total Patients</div>
+        <div class="stat-value blue" id="statTotal">—</div>
+        <div class="stat-sub">Active beds (view all)</div>
+      </div>
+      <div class="stat-card" id="cardFilterLow" onclick="filterWardByRisk('LOW')" title="Filter to Low Risk patients">
+        <div class="stat-label">Low Risk</div>
+        <div class="stat-value green" id="statLow">—</div>
+        <div class="stat-sub">Stable</div>
+      </div>
+      <div class="stat-card" id="cardFilterMod" onclick="filterWardByRisk('MODERATE')" title="Filter to Moderate Risk patients">
+        <div class="stat-label">Moderate</div>
+        <div class="stat-value yellow" id="statMod">—</div>
+        <div class="stat-sub">Watch closely</div>
+      </div>
+      <div class="stat-card" id="cardFilterHigh" onclick="filterWardByRisk('HIGH')" title="Filter to High Risk patients">
+        <div class="stat-label">High Risk</div>
+        <div class="stat-value orange" id="statHigh">—</div>
+        <div class="stat-sub">Escalate care</div>
+      </div>
+      <div class="stat-card" id="cardFilterCrit" onclick="filterWardByRisk('CRITICAL')" title="Filter to Critical patients">
+        <div class="stat-label">🚨 Critical</div>
+        <div class="stat-value red" id="statCrit">—</div>
+        <div class="stat-sub">Immediate action</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Patient Cards -->
+  <div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:.85rem;">
+      <div class="section-title" style="margin-bottom:0;">ICU Patient Monitor</div>
+      <div id="filterStatusBadge" style="display:none; align-items:center; gap:0.5rem; font-size:0.75rem;">
+        <span id="filterStatusText" style="color:var(--cyan); font-weight:600;"></span>
+        <button onclick="filterWardByRisk(null)" class="view-chart-btn" style="padding:0.15rem 0.45rem;">✕ Show All Beds</button>
+      </div>
+    </div>
+    <div class="ward-grid" id="wardGrid">
+      <!-- Cards injected by JS -->
+    </div>
+  </div>
+
+  <!-- ── Patient Condition & Treatment Panel ─────────────── -->
+  <div class="condition-panel" id="conditionPanel">
+    <div class="condition-panel-header">
+      <span style="font-size:1.2rem;">🩺</span>
+      <h3>Patient Condition Analysis &amp; Treatment Guide</h3>
+      <div style="margin-left:auto; font-size:0.7rem; color:var(--dim); font-style:italic;">Select a patient to view detailed clinical guidance</div>
+    </div>
+    <div class="cond-selector-row">
+      <label>Analyzing Patient:</label>
+      <select class="cond-patient-sel" id="condPatientSel" onchange="selectPatientForCondition(this.value)">
+        <option value="">— Select a patient —</option>
+      </select>
+      <div id="condPatientRiskBadge" style="flex-shrink:0;"></div>
+    </div>
+    <div class="condition-panel-tabs">
+      <button class="cond-tab active" id="ctab-overview" onclick="switchCondTab('overview')">📋 Condition Overview</button>
+      <button class="cond-tab" id="ctab-treatment" onclick="switchCondTab('treatment')">💊 Treatment Protocol</button>
+      <button class="cond-tab" id="ctab-monitoring" onclick="switchCondTab('monitoring')">📡 Monitoring Plan</button>
+      <button class="cond-tab" id="ctab-labs" onclick="switchCondTab('labs')">🔬 Lab Interpretation</button>
+    </div>
+    <!-- Tab: Condition Overview -->
+    <div class="condition-body active" id="cbody-overview">
+      <div id="condOverviewContent">
+        <div style="text-align:center; padding:2rem; color:var(--dim); font-size:0.8rem;">
+          Select a patient above to view their condition analysis
+        </div>
+      </div>
+    </div>
+    <!-- Tab: Treatment Protocol -->
+    <div class="condition-body" id="cbody-treatment">
+      <div id="condTreatmentContent">
+        <div style="text-align:center; padding:2rem; color:var(--dim); font-size:0.8rem;">Select a patient above</div>
+      </div>
+    </div>
+    <!-- Tab: Monitoring Plan -->
+    <div class="condition-body" id="cbody-monitoring">
+      <div id="condMonitoringContent">
+        <div style="text-align:center; padding:2rem; color:var(--dim); font-size:0.8rem;">Select a patient above</div>
+      </div>
+    </div>
+    <!-- Tab: Lab Interpretation -->
+    <div class="condition-body" id="cbody-labs">
+      <div id="condLabsContent">
+        <div style="text-align:center; padding:2rem; color:var(--dim); font-size:0.8rem;">Select a patient above</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── AI Medical Chatbot ─────────────────────────────────── -->
+<button class="chatbot-fab" id="chatbotFab" onclick="toggleChatbot()" title="Open AI Clinical Assistant">
+  🤖
+  <span class="fab-badge" id="chatFabBadge">1</span>
+</button>
+
+<div class="chatbot-window" id="chatbotWindow">
+  <div class="chat-header">
+    <div class="chat-avatar">🏥</div>
+    <div class="chat-header-info">
+      <h4>SepsisPredictAI Assistant</h4>
+      <span>● Clinical Decision Support</span>
+    </div>
+    <button class="chat-close-btn" onclick="toggleChatbot()">✕</button>
+  </div>
+  <div class="chat-messages" id="chatMessages"></div>
+  <div class="chat-quick-btns" id="chatQuickBtns">
+    <button class="chat-quick-btn" onclick="sendQuick('How to treat this patient?')">🩺 Treat Patient</button>
+    <button class="chat-quick-btn" onclick="sendQuick('Explain patient condition')">📋 Condition</button>
+    <button class="chat-quick-btn" onclick="sendQuick('First hour bundle')">1-Hour Bundle</button>
+    <button class="chat-quick-btn" onclick="sendQuick('What is sepsis?')">What is sepsis?</button>
+  </div>
+  <div class="chat-input-row">
+    <input class="chat-input" id="chatInput" type="text" placeholder="Ask about sepsis, vitals, treatment…" onkeydown="if(event.key==='Enter') sendChatMessage()">
+    <button class="chat-send-btn" onclick="sendChatMessage()">➤</button>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this) closeModal()">
+  <div class="modal" id="modalContent">
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle">Patient Detail</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"><!-- filled by JS --></div>
+  </div>
+</div>
+
+<!-- 🎯 What-If Intervention Studio Modal -->
+<div class="modal-overlay" id="whatIfModalOverlay" onclick="if(event.target===this) closeWhatIfModal()">
+  <div class="modal" style="max-width:760px;">
+    <div class="modal-header">
+      <span class="modal-title" id="whatIfTitle">🎯 Clinical What-If Intervention Studio</span>
+      <button class="modal-close" onclick="closeWhatIfModal()">✕</button>
+    </div>
+    <div class="modal-body" id="whatIfBody">
+      <!-- filled dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- 📋 Surviving Sepsis Hour-1 Bundle Modal -->
+<div class="modal-overlay" id="sscModalOverlay" onclick="if(event.target===this) closeSscModal()">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-header">
+      <span class="modal-title" id="sscTitle">📋 Surviving Sepsis Campaign (SSC) Hour-1 Protocol</span>
+      <button class="modal-close" onclick="closeSscModal()">✕</button>
+    </div>
+    <div class="modal-body" id="sscBody">
+      <!-- filled dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- 🌐 FHIR R4 Bundle Modal -->
+<div class="modal-overlay" id="fhirModalOverlay" onclick="if(event.target===this) closeFhirModal()">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-header">
+      <span class="modal-title" id="fhirTitle">🌐 HL7 FHIR R4 Clinical Resource</span>
+      <button class="modal-close" onclick="closeFhirModal()">✕</button>
+    </div>
+    <div class="modal-body" id="fhirBody">
+      <!-- filled dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- ⚙️ Connectivity & Mode Settings Modal -->
+<div class="modal-overlay" id="settingsModalOverlay" onclick="if(event.target===this) closeSettingsModal()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <span class="modal-title">⚙️ App Mode & Connectivity Settings</span>
+      <button class="modal-close" onclick="closeSettingsModal()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex; flex-direction:column; gap:1rem; padding:1.2rem;">
+      <div class="form-group">
+        <label style="font-weight:700; color:var(--bright); margin-bottom:0.4rem; display:block;">Operation Mode</label>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
+          <button id="optOfflineBtn" class="action-btn purple" onclick="setAppMode('offline')">
+            ⚡ Offline Simulator<br><span style="font-size:0.65rem; opacity:0.85; font-weight:normal;">Built-in AI & ICU Stream</span>
+          </button>
+          <button id="optRemoteBtn" class="action-btn" style="background:rgba(255,255,255,0.06); border:1px solid var(--border);" onclick="setAppMode('remote')">
+            🌐 Live FastAPI Server<br><span style="font-size:0.65rem; opacity:0.85; font-weight:normal;">Hospital / Lab Network</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="form-group" id="remoteConfigGroup" style="display:none;">
+        <label style="font-weight:600; color:var(--text); margin-bottom:0.3rem; display:block;">FastAPI Server Address</label>
+        <input type="text" id="settingServerUrl" class="form-input" placeholder="http://192.168.1.100:8000" style="width:100%; padding:0.6rem; background:rgba(0,0,0,0.4); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:'JetBrains Mono';">
+        <span style="font-size:0.68rem; color:var(--dim); margin-top:0.3rem; display:block;">Enter the local network IP or domain where <code>python start_server.py</code> is running.</span>
+      </div>
+
+      <div class="form-group">
+        <label style="font-weight:600; color:var(--text); margin-bottom:0.3rem; display:block;">Simulation Refresh Speed</label>
+        <select id="settingTickSpeed" class="form-select" style="width:100%; padding:0.5rem; background:var(--bg2); border:1px solid var(--border); border-radius:6px; color:var(--text);" onchange="updateTickSpeed(this.value)">
+          <option value="2000">Fast (Every 2 seconds)</option>
+          <option value="3500" selected>Standard (Every 3.5 seconds)</option>
+          <option value="6000">Slow (Every 6 seconds)</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.03); padding:0.75rem; border-radius:8px; border:1px solid var(--border);">
+        <div>
+          <div style="font-size:0.8rem; font-weight:700; color:var(--bright);">Haptic Alert Vibration</div>
+          <div style="font-size:0.68rem; color:var(--dim);">Vibrate mobile device on Critical Sepsis risk events</div>
+        </div>
+        <input type="checkbox" id="settingVibrate" checked style="width:18px; height:18px; accent-color:var(--purple); cursor:pointer;">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:0.6rem; margin-top:0.4rem;">
+        <button class="action-btn purple" style="max-width:140px;" onclick="saveAndApplySettings()">💾 Save & Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =============================================================
+   LIVE WARD MONITOR — Dual-Mode (Offline AI + Remote Server)
+   ============================================================= */
+let savedMode = localStorage.getItem('sepsis_app_mode');
+let APP_MODE = savedMode || (location.protocol.startsWith('http') ? 'remote' : 'offline');
+let REMOTE_SERVER = (location.origin && location.origin.startsWith('http')) 
+  ? location.origin 
+  : (localStorage.getItem('sepsis_server_url') || 'http://127.0.0.1:8000');
+let TICK_INTERVAL = parseInt(localStorage.getItem('sepsis_tick_speed') || '3500');
+let VIBRATION_ENABLED = localStorage.getItem('sepsis_vibration') !== 'false';
+
+let API_BASE = REMOTE_SERVER.replace(/\/+$/, '');
+let WS_URL   = API_BASE.replace(/^http/, 'ws') + '/ws/monitor';
+
+let currentRiskFilter = null;
+let _selectedPid = null;
+
+let ws = null;
+let offlineTimer = null;
+let reconnectDelay = 1500;
+let riskHistory = {};   // {pid: [risk_score, ...]}  ring buffer
+const HISTORY_LEN = 48;
+const SPARKLINE_COLORS = {
+  LOW:'#22c55e', MODERATE:'#eab308', HIGH:'#f97316', CRITICAL:'#ef4444'
+};
+
+// ── App Mode & Settings Management ───────────────────────────
+function openSettingsModal() {
+  document.getElementById('settingsModalOverlay').classList.add('open');
+  document.getElementById('settingServerUrl').value = REMOTE_SERVER;
+  document.getElementById('settingTickSpeed').value = String(TICK_INTERVAL);
+  document.getElementById('settingVibrate').checked = VIBRATION_ENABLED;
+  updateModeUi(APP_MODE);
+}
+
+function closeSettingsModal() {
+  document.getElementById('settingsModalOverlay').classList.remove('open');
+}
+
+function setAppMode(mode) {
+  APP_MODE = mode;
+  updateModeUi(mode);
+}
+
+function updateModeUi(mode) {
+  const offBtn = document.getElementById('optOfflineBtn');
+  const remBtn = document.getElementById('optRemoteBtn');
+  const remGroup = document.getElementById('remoteConfigGroup');
+  
+  if (mode === 'offline') {
+    offBtn.className = 'action-btn purple';
+    remBtn.className = 'action-btn';
+    remBtn.style.background = 'rgba(255,255,255,0.06)';
+    remGroup.style.display = 'none';
+  } else {
+    remBtn.className = 'action-btn purple';
+    offBtn.className = 'action-btn';
+    offBtn.style.background = 'rgba(255,255,255,0.06)';
+    remGroup.style.display = 'block';
+  }
+}
+
+function updateTickSpeed(val) {
+  TICK_INTERVAL = parseInt(val);
+}
+
+function saveAndApplySettings() {
+  const urlVal = document.getElementById('settingServerUrl').value.trim();
+  if (urlVal) REMOTE_SERVER = urlVal;
+  VIBRATION_ENABLED = document.getElementById('settingVibrate').checked;
+  TICK_INTERVAL = parseInt(document.getElementById('settingTickSpeed').value);
+
+  localStorage.setItem('sepsis_app_mode', APP_MODE);
+  localStorage.setItem('sepsis_server_url', REMOTE_SERVER);
+  localStorage.setItem('sepsis_tick_speed', String(TICK_INTERVAL));
+  localStorage.setItem('sepsis_vibration', String(VIBRATION_ENABLED));
+
+  API_BASE = REMOTE_SERVER.replace(/\/+$/, '');
+  WS_URL   = API_BASE.replace(/^http/, 'ws') + '/ws/monitor';
+
+  closeSettingsModal();
+  initApplicationMode();
+}
+
+function initApplicationMode() {
+  // Clear any existing simulation timer
+  if (offlineTimer) {
+    clearInterval(offlineTimer);
+    offlineTimer = null;
+  }
+  // Close existing ws
+  if (ws) {
+    try { ws.close(); } catch(e){}
+    ws = null;
+  }
+
+  const modeBtnText = document.getElementById('modeText');
+  const modeIcon = document.getElementById('modeIcon');
+  const connBadge = document.getElementById('connBadge');
+  const connText = document.getElementById('connText');
+
+  if (APP_MODE === 'offline') {
+    modeBtnText.textContent = 'Offline AI Mode';
+    modeIcon.textContent = '⚡';
+    connBadge.className = 'conn-badge connected';
+    connText.textContent = 'Simulator';
+    document.getElementById('loadingOverlay').style.display = 'none';
+
+    // Run initial tick immediately
+    if (window.standaloneICUEngine) {
+      const initialData = window.standaloneICUEngine.step();
+      handleWardUpdate(initialData);
+
+      // Start offline timer
+      offlineTimer = setInterval(() => {
+        const data = window.standaloneICUEngine.step();
+        handleWardUpdate(data);
+      }, TICK_INTERVAL);
+    }
+  } else {
+    modeBtnText.textContent = 'Live Server';
+    modeIcon.textContent = '🌐';
+    connBadge.className = 'conn-badge disconnected';
+    connText.textContent = 'Connecting…';
+    
+    // Pre-fetch real server patients immediately while WebSocket connects
+    fetch(`${API_BASE}/api/patients`)
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.patients && d.patients.length) {
+          handleWardUpdate(d);
+        }
+      })
+      .catch(() => {
+        if (window.standaloneICUEngine) {
+          handleWardUpdate(window.standaloneICUEngine.step());
+        }
+      });
+    
+    connect();
+
+    // Auto-dismiss loading screen quickly
+    setTimeout(() => {
+      const overlay = document.getElementById('loadingOverlay');
+      if (overlay) overlay.style.display = 'none';
+    }, 1200);
+  }
+}
+
+// ── WebSocket Connection for Remote Server ────────────────────
+function connect() {
+  if (APP_MODE !== 'remote') return;
+  try {
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      document.getElementById('connBadge').className = 'conn-badge connected';
+      document.getElementById('connText').textContent = 'Live Server';
+      document.getElementById('modeText').textContent = 'Live Server';
+      document.getElementById('modeIcon').textContent = '🟢';
+      reconnectDelay = 1500;
+      document.getElementById('loadingOverlay').style.display = 'none';
+      if (offlineTimer) {
+        clearInterval(offlineTimer);
+        offlineTimer = null;
+      }
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'init' || data.type === 'ward_update') {
+          handleWardUpdate(data);
+        }
+      } catch(e) {
+        console.error('WS parse error:', e);
+      }
+    };
+
+    ws.onclose = () => {
+      if (APP_MODE === 'remote') {
+        document.getElementById('connBadge').className = 'conn-badge disconnected';
+        document.getElementById('connText').textContent = 'Reconnecting…';
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
+        // While waiting for reconnect, keep live simulation active so screen is never frozen
+        if (!offlineTimer && window.standaloneICUEngine) {
+          offlineTimer = setInterval(() => {
+            if (APP_MODE === 'remote' && (!ws || ws.readyState !== WebSocket.OPEN)) {
+              const data = window.standaloneICUEngine.step();
+              handleWardUpdate(data);
+            }
+          }, TICK_INTERVAL);
+        }
+
+        setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+      }
+    };
+
+    ws.onerror = () => {
+      if (ws) ws.close();
+    };
+  } catch(e) {
+    console.warn('Remote connection error, fallback available:', e);
+  }
+}
+
+// ── Filter ICU Patient Monitor by Risk Level ─────────────────
+function filterWardByRisk(level) {
+  if (currentRiskFilter === level) {
+    currentRiskFilter = null; // Toggle off to show all
+  } else {
+    currentRiskFilter = level;
+  }
+  updateFilterUI();
+
+  const grid = document.getElementById('wardGrid');
+  if (grid) {
+    Array.from(grid.children).forEach(card => {
+      if (!currentRiskFilter) {
+        card.style.display = '';
+      } else {
+        const hasRisk = card.classList.contains(`risk-${currentRiskFilter.toLowerCase()}`);
+        card.style.display = hasRisk ? '' : 'none';
+      }
+    });
+  }
+}
+
+function updateFilterUI() {
+  document.getElementById('cardFilterAll')?.classList.toggle('active-filter', currentRiskFilter === null);
+  document.getElementById('cardFilterLow')?.classList.toggle('active-filter', currentRiskFilter === 'LOW');
+  document.getElementById('cardFilterMod')?.classList.toggle('active-filter', currentRiskFilter === 'MODERATE');
+  document.getElementById('cardFilterHigh')?.classList.toggle('active-filter', currentRiskFilter === 'HIGH');
+  document.getElementById('cardFilterCrit')?.classList.toggle('active-filter', currentRiskFilter === 'CRITICAL');
+
+  const badge = document.getElementById('filterStatusBadge');
+  const txt = document.getElementById('filterStatusText');
+  if (badge && txt) {
+    if (currentRiskFilter) {
+      badge.style.display = 'inline-flex';
+      txt.textContent = `Filtered by: ${currentRiskFilter} RISK`;
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+// ── Handle ward update ───────────────────────────────────────
+function handleWardUpdate(data) {
+  const patients = data.patients || [];
+  const tick = data.tick || 0;
+
+  // Update header
+  document.getElementById('tickBadge').textContent = `Tick ${tick}`;
+  const modelSel = document.getElementById('activeModelSelect');
+  if (modelSel && document.activeElement !== modelSel && data.model_type) {
+    modelSel.value = data.model_type;
+  }
+
+  // Stats: ensure exact uppercase matching and 100% sync with cards
+  const counts = {LOW:0, MODERATE:0, HIGH:0, CRITICAL:0};
+  patients.forEach(p => {
+    const lvl = String(p.risk_level || 'LOW').trim().toUpperCase();
+    counts[lvl] = (counts[lvl] || 0) + 1;
+    // Update ring buffer
+    if (!riskHistory[p.patient_id]) riskHistory[p.patient_id] = [];
+    riskHistory[p.patient_id].push(p.risk_score || 0);
+    if (riskHistory[p.patient_id].length > HISTORY_LEN)
+      riskHistory[p.patient_id].shift();
+  });
+  document.getElementById('statTotal').textContent = patients.length;
+  document.getElementById('statLow').textContent   = counts.LOW || 0;
+  document.getElementById('statMod').textContent   = counts.MODERATE || 0;
+  document.getElementById('statHigh').textContent  = counts.HIGH || 0;
+  document.getElementById('statCrit').textContent  = counts.CRITICAL || 0;
+
+  // Alerts
+  const alerts = data.alerts || [];
+  if (alerts.length > 0) {
+    const names = alerts.map(a => `${a.name} (${a.bed})`).join(', ');
+    document.getElementById('alertText').textContent =
+      `🚨 SEPSIS ALERT: ${names} — Immediate intervention required`;
+    document.getElementById('alertBanner').classList.add('visible');
+  } else {
+    document.getElementById('alertBanner').classList.remove('visible');
+  }
+
+  // Render / update cards
+  renderCards(patients);
+
+  // Update Patient Condition Analysis Panel
+  if (typeof populateCondPatientSelector === 'function') {
+    populateCondPatientSelector(patients);
+  }
+}
+
+// ── Render Patient Cards ─────────────────────────────────────
+function renderCards(patients) {
+  const grid = document.getElementById('wardGrid');
+  const validIds = new Set(patients.map(p => `card-${p.patient_id}`));
+
+  // 1. Purge ghost/stale cards from other engine modes or previous sessions
+  Array.from(grid.children).forEach(child => {
+    if (child.id && child.id.startsWith('card-') && !validIds.has(child.id)) {
+      child.remove();
+    }
+  });
+
+  // 2. Sort: critical first, then high, moderate, low
+  const order = {CRITICAL:0, HIGH:1, MODERATE:2, LOW:3};
+  patients.sort((a,b) => {
+    const la = String(a.risk_level || 'LOW').toUpperCase();
+    const lb = String(b.risk_level || 'LOW').toUpperCase();
+    return (order[la]||3) - (order[lb]||3);
+  });
+
+  patients.forEach(p => {
+    let card = document.getElementById(`card-${p.patient_id}`);
+    if (!card) {
+      card = createCard(p);
+    }
+    grid.appendChild(card); // Re-appends to guarantee sorted DOM order
+    updateCard(card, p);
+
+    // Apply active risk filter from Ward Overview stat cards
+    if (currentRiskFilter) {
+      const plvl = String(p.risk_level || 'LOW').toUpperCase();
+      card.style.display = (plvl === currentRiskFilter) ? '' : 'none';
+    } else {
+      card.style.display = '';
+    }
+  });
+}
+
+function riskClass(level) {
+  const up = String(level || 'LOW').trim().toUpperCase();
+  return ({LOW:'risk-low', MODERATE:'risk-moderate', HIGH:'risk-high', CRITICAL:'risk-critical'})[up] || 'risk-low';
+}
+function vitalClass(val, lo, hi) {
+  if (val == null || isNaN(val)) return 'ok';
+  return val < lo || val > hi ? (Math.abs((val-(lo+hi)/2)/((hi-lo)/2)) > 1.5 ? 'danger' : 'warn') : 'ok';
+}
+
+const VITAL_RANGES = {
+  HR:[60,100], O2Sat:[94,100], Temp:[36.1,38], SBP:[90,140], MAP:[70,100], DBP:[60,90], Resp:[12,20]
+};
+
+function createCard(p) {
+  const card = document.createElement('div');
+  card.className = 'patient-card';
+  card.id = `card-${p.patient_id}`;
+  card.onclick = (e) => {
+    if (e.target.closest('button') || e.target.closest('.view-chart-btn')) return;
+    selectPatientForCondition(p.patient_id);
+  };
+  card.innerHTML = `
+    <div class="card-header">
+      <span class="card-bed">${p.bed}</span>
+      <span class="card-name">${p.name}</span>
+      <span class="card-meta">${p.age}y ${p.gender}</span>
+      <span class="risk-pill" id="pill-${p.patient_id}">—</span>
+      <button class="view-chart-btn" onclick="openModal('${p.patient_id}')" title="Open Complete Clinical Chart">📊 Chart</button>
+    </div>
+    <div class="card-gauge-row">
+      <div class="mini-gauge">
+        <svg viewBox="0 0 64 40" id="gauge-${p.patient_id}">
+          <path d="M 6 36 A 26 26 0 0 1 58 36" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="6" stroke-linecap="round"/>
+          <path id="garc-${p.patient_id}" d="M 6 36 A 26 26 0 0 1 6 36" fill="none" stroke="url(#gg-${p.patient_id})" stroke-width="6" stroke-linecap="round"/>
+          <defs>
+            <linearGradient id="gg-${p.patient_id}" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#22c55e"/>
+              <stop offset="40%" stop-color="#eab308"/>
+              <stop offset="70%" stop-color="#f97316"/>
+              <stop offset="100%" stop-color="#ef4444"/>
+            </linearGradient>
+          </defs>
+          <line id="gneedle-${p.patient_id}" x1="32" y1="36" x2="32" y2="13"
+            stroke="white" stroke-width="1.5" stroke-linecap="round"
+            transform="rotate(-90 32 36)"/>
+          <circle cx="32" cy="36" r="3" fill="white" opacity="0.8"/>
+        </svg>
+        <div class="gauge-score" id="gscore-${p.patient_id}">0.00</div>
+      </div>
+      <div class="card-vitals" id="vitals-${p.patient_id}"></div>
+    </div>
+    <div class="card-sparkline">
+      <div class="sparkline-label">Risk Score History</div>
+      <canvas class="sparkline" id="spark-${p.patient_id}" width="300" height="36"></canvas>
+    </div>
+    <div class="card-shap" id="shap-${p.patient_id}"></div>
+    <div class="card-scores" id="scores-${p.patient_id}"></div>
+    <div class="card-interp" id="interp-${p.patient_id}"></div>
+    <div class="card-footer">
+      <span class="card-footer-text" id="icu-${p.patient_id}">ICU: ${p.icu_hours?.toFixed(1)}h</span>
+      <span class="card-footer-traj traj-${p.trajectory}" id="traj-${p.patient_id}">${p.trajectory}</span>
+    </div>
+  `;
+  return card;
+}
+
+function updateCard(card, p) {
+  const level = String(p.risk_level || 'LOW').trim().toUpperCase();
+  const isSelected = (_selectedPid === p.patient_id);
+  card.className = `patient-card ${riskClass(level)}${isSelected ? ' selected-card' : ''}`;
+
+  // Pill
+  const pill = document.getElementById(`pill-${p.patient_id}`);
+  if (pill) { pill.textContent = `${p.risk_emoji||''} ${level}`; pill.className = `risk-pill ${level}`; }
+
+  // Gauge
+  updateMiniGauge(p.patient_id, p.risk_score || 0);
+
+  // Vitals
+  const vDiv = document.getElementById(`vitals-${p.patient_id}`);
+  if (vDiv && p.vitals) {
+    const v = p.vitals;
+    vDiv.innerHTML = [
+      ['HR', v.HR, 'bpm', 60, 100],
+      ['O2Sat', v.O2Sat, '%', 94, 100],
+      ['Temp', v.Temp, '°C', 36.1, 38],
+      ['MAP', v.MAP, 'mmHg', 70, 100],
+      ['Resp', v.Resp, 'br/m', 12, 20],
+      ['SBP', v.SBP, 'mmHg', 90, 140],
+    ].map(([name, val, unit, lo, hi]) => {
+      const cls = vitalClass(val, lo, hi);
+      const disp = val != null ? (Number.isInteger(val) ? val : val.toFixed(1)) : '—';
+      return `<div class="vital-chip">
+        <span class="vital-chip-label">${name}</span>
+        <span class="vital-chip-val ${cls}">${disp}<span style="font-size:.55rem;color:var(--dim)"> ${unit}</span></span>
+      </div>`;
+    }).join('');
+  }
+
+  // Sparkline
+  drawSparkline(p.patient_id, level);
+
+  // SHAP
+  const shapDiv = document.getElementById(`shap-${p.patient_id}`);
+  if (shapDiv && p.top_features) {
+    const feats = p.top_features.slice(0, 4);
+    const maxV = Math.max(...feats.map(f => Math.abs(f.contribution)), 0.01);
+    shapDiv.innerHTML = feats.map(f => {
+      const pct = (Math.abs(f.contribution) / maxV) * 42;
+      const isPos = f.contribution >= 0;
+      return `<div class="shap-row">
+        <span class="shap-name">${f.feature}</span>
+        <div class="shap-track">
+          <div class="shap-center"></div>
+          <div class="shap-fill ${isPos?'pos':'neg'}" style="width:${pct}%"></div>
+        </div>
+        <span class="shap-val ${isPos?'pos':'neg'}">${isPos?'+':''}${f.contribution.toFixed(3)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Clinical scores
+  const scDiv = document.getElementById(`scores-${p.patient_id}`);
+  if (scDiv && p.clinical_scores) {
+    const cs = p.clinical_scores;
+    scDiv.innerHTML = [
+      ['qSOFA', cs.qsofa, 3],
+      ['NEWS2', cs.news2, 20],
+      ['SOFA', cs.sofa, 8],
+    ].map(([name, val, max]) => {
+      const pct = val / max;
+      const col = pct > .6 ? 'var(--red)' : pct > .35 ? 'var(--yellow)' : 'var(--green)';
+      return `<div class="score-chip">
+        <span class="score-chip-name">${name}</span>
+        <span class="score-chip-val" style="color:${col}">${val}<span style="font-size:.55rem;font-weight:400;color:var(--dim)">/${max}</span></span>
+      </div>`;
+    }).join('');
+  }
+
+  // Interp
+  const intDiv = document.getElementById(`interp-${p.patient_id}`);
+  if (intDiv) intDiv.textContent = p.interpretation || '';
+
+  // Footer
+  const icuEl = document.getElementById(`icu-${p.patient_id}`);
+  if (icuEl) icuEl.textContent = `ICU: ${(p.icu_hours||0).toFixed(1)}h`;
+}
+
+// ── Mini Gauge ──────────────────────────────────────────────
+function updateMiniGauge(pid, score) {
+  const arc = document.getElementById(`garc-${pid}`);
+  const needle = document.getElementById(`gneedle-${pid}`);
+  const scoreEl = document.getElementById(`gscore-${pid}`);
+  if (!arc) return;
+
+  // Arc: from -150° to +150° total = 300° range, center at 0° (top)
+  // SVG coords: cx=32, cy=36, r=26
+  const cx=32, cy=36, r=26;
+  const START_DEG = -150, RANGE_DEG = 300;
+  const endDeg = START_DEG + score * RANGE_DEG;
+
+  function polar(deg) {
+    const rad = (deg - 90) * Math.PI / 180;
+    return {x: cx + r*Math.cos(rad), y: cy + r*Math.sin(rad)};
+  }
+  const s = polar(START_DEG), e = polar(endDeg);
+  const la = endDeg - START_DEG > 180 ? 1 : 0;
+  arc.setAttribute('d', `M ${s.x} ${s.y} A ${r} ${r} 0 ${la} 1 ${e.x} ${e.y}`);
+
+  const needleRot = START_DEG + score * RANGE_DEG;
+  needle.setAttribute('transform', `rotate(${needleRot} ${cx} ${cy})`);
+  if (scoreEl) scoreEl.textContent = score.toFixed(2);
+}
+
+// ── Sparkline ────────────────────────────────────────────────
+function drawSparkline(pid, level) {
+  const canvas = document.getElementById(`spark-${pid}`);
+  if (!canvas) return;
+  const data = riskHistory[pid] || [];
+  if (data.length < 2) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth || 280;
+  const H = canvas.clientHeight || 36;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const color = SPARKLINE_COLORS[level] || '#22c55e';
+  const n = data.length;
+  const stepX = W / (n - 1);
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, color.replace(')', ',.25)').replace('rgb', 'rgba'));
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  data.forEach((v, i) => {
+    ctx.lineTo(i * stepX, H - v * H * 0.9 - 2);
+  });
+  ctx.lineTo((n-1)*stepX, H);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = i * stepX;
+    const y = H - v * H * 0.9 - 2;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Dot at latest
+  const last = data[n-1];
+  ctx.beginPath();
+  ctx.arc((n-1)*stepX, H - last*H*0.9 - 2, 3, 0, Math.PI*2);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+// ── Detail Modal ─────────────────────────────────────────────
+let _modalPid = null;
+
+async function openModal(pid) {
+  _modalPid = pid;
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('modalTitle').textContent = 'Loading…';
+  document.getElementById('modalBody').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--dim)">Fetching data…</div>';
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/patients/${pid}`);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    renderModal(data);
+  } catch (e) {
+    if (_condPatientsCache && _condPatientsCache[pid]) {
+      renderModal(_condPatientsCache[pid]);
+      return;
+    }
+    if (window.standaloneICUEngine) {
+      const p = window.standaloneICUEngine.getPatientSummary(pid);
+      if (p) {
+        renderModal(p);
+        return;
+      }
+    }
+    document.getElementById('modalBody').innerHTML = `<div style="color:var(--red)">Failed to load patient data.</div>`;
+  }
+}
+
+function renderModal(p) {
+  document.getElementById('modalTitle').textContent = `${p.name || p.patient_id} — ${p.bed || ''}`;
+  const v = p.vitals || {};
+  const l = p.labs || {};
+  const cs = p.clinical_scores || {};
+
+  const body = document.getElementById('modalBody');
+  body.innerHTML = `
+    <div>
+      <div class="modal-section-title">Risk Assessment</div>
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+        <div style="font-size:2rem;font-weight:800;font-family:'JetBrains Mono',monospace;color:${
+          {LOW:'#4ade80',MODERATE:'#facc15',HIGH:'#fb923c',CRITICAL:'#f87171'}[p.risk_level]||'white'
+        }">${(p.risk_score||0).toFixed(3)}</div>
+        <span class="risk-pill ${p.risk_level||'LOW'}" style="font-size:.8rem">${p.risk_emoji||''} ${p.risk_level||'—'}</span>
+        <span style="font-size:.75rem;color:var(--dim);flex:1">${p.interpretation||''}</span>
+      </div>
+    </div>
+    <div>
+      <div class="modal-section-title">Vital Signs</div>
+      <div class="vitals-grid">
+        ${[['HR',v.HR,'bpm'],['O2Sat',v.O2Sat,'%'],['Temp',v.Temp,'°C'],
+           ['SBP',v.SBP,'mmHg'],['MAP',v.MAP,'mmHg'],['DBP',v.DBP,'mmHg'],
+           ['Resp',v.Resp,'br/min']].map(([n,val,u])=>`
+          <div class="vital-box">
+            <div class="vital-box-label">${n}</div>
+            <div class="vital-box-val">${val!=null?val.toFixed(n==='Temp'?1:0):'—'}</div>
+            <div class="vital-box-unit">${u}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div>
+      <div class="modal-section-title">Key Lab Values</div>
+      <div class="vitals-grid">
+        ${[['Lactate',l.Lactate,'mmol/L'],['Creatinine',l.Creatinine,'mg/dL'],
+           ['WBC',l.WBC,'10³/µL'],['pH',l.pH,''],['Platelets',l.Platelets,'10³/µL']].map(([n,val,u])=>`
+          <div class="vital-box">
+            <div class="vital-box-label">${n}</div>
+            <div class="vital-box-val">${val!=null?val.toFixed(2):'—'}</div>
+            <div class="vital-box-unit">${u}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div>
+      <div class="modal-section-title">Clinical Scores</div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        ${[['qSOFA',cs.qsofa,3],['NEWS2',cs.news2,20],['Partial SOFA',cs.sofa,8]].map(([n,val,max])=>`
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-sm);padding:.6rem 1rem;min-width:100px">
+            <div style="font-size:.65rem;color:var(--dim)">${n}</div>
+            <div style="font-size:1.5rem;font-weight:800;font-family:'JetBrains Mono',monospace">${val??'—'}<span style="font-size:.75rem;font-weight:400;color:var(--dim)">/${max}</span></div>
+          </div>`).join('')}
+      </div>
+    </div>
+    ${(p.top_features||[]).length>0?`
+    <div>
+      <div class="modal-section-title">SHAP Feature Contributions (Model Explanation)</div>
+      ${p.top_features.slice(0,8).map(f=>{
+        const maxV=Math.max(...(p.top_features||[]).map(x=>Math.abs(x.contribution)),0.01);
+        const pct=(Math.abs(f.contribution)/maxV)*42;
+        const isPos=f.contribution>=0;
+        return `<div class="shap-row" style="margin-bottom:.4rem">
+          <span class="shap-name" style="width:100px">${f.feature}</span>
+          <div class="shap-track"><div class="shap-center"></div>
+            <div class="shap-fill ${isPos?'pos':'neg'}" style="width:${pct}%"></div></div>
+          <span class="shap-val ${isPos?'pos':'neg'}">${isPos?'+':''}${f.contribution.toFixed(4)}</span>
+        </div>`;
+      }).join('')}
+    </div>`:''}
+
+    <!-- Extreme CDSS Action Buttons -->
+    <div class="cdss-btn-row">
+      <button class="btn-cdss purple" onclick="openWhatIfModal('${p.patient_id}')">🎯 What-If Studio</button>
+      <button class="btn-cdss cyan" onclick="openSscModal('${p.patient_id}')">📋 Surviving Sepsis Bundle</button>
+      <button class="btn-cdss green" onclick="openFhirModal('${p.patient_id}')">🌐 FHIR R4 Export</button>
+    </div>
+
+    <div style="font-size:.72rem;color:var(--dim);text-align:right;margin-top:0.4rem;">
+      Active AI Architecture: <strong style="color:var(--cyan)">${p.model_used||'—'}</strong> &nbsp;|&nbsp; ICU Stay: ${(p.icu_hours||0).toFixed(1)}h
+    </div>
+  `;
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  _modalPid = null;
+}
+
+// ── Dynamic Model Switcher ───────────────────────────────────
+async function switchActiveModel(modelType) {
+  try {
+    const res = await fetch(`${API_BASE}/api/model/switch`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({model_type: modelType})
+    });
+    const data = await res.json();
+    if (res.ok) {
+      console.log(`Switched model to: ${data.active_model}`);
+    } else {
+      alert(`Model Switch Error: ${data.detail || 'Failed'}`);
+    }
+  } catch (e) {
+    console.error('Error switching model:', e);
+  }
+}
+
+// ── 🎯 What-If Counterfactual Simulator ───────────────────────
+let _whatIfPid = null;
+let _whatIfBaseData = null;
+
+async function openWhatIfModal(pid) {
+  _whatIfPid = pid;
+  document.getElementById('whatIfModalOverlay').classList.add('open');
+  document.getElementById('whatIfBody').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--dim)">Loading simulation studio…</div>';
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/patients/${pid}`);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    _whatIfBaseData = data;
+    renderWhatIfStudio(data);
+  } catch (e) {
+    if (_condPatientsCache && _condPatientsCache[pid]) {
+      _whatIfBaseData = _condPatientsCache[pid];
+      renderWhatIfStudio(_condPatientsCache[pid]);
+      return;
+    }
+    if (window.standaloneICUEngine) {
+      const p = window.standaloneICUEngine.getPatientSummary(pid);
+      if (p) {
+        _whatIfBaseData = p;
+        renderWhatIfStudio(p);
+        return;
+      }
+    }
+    document.getElementById('whatIfBody').innerHTML = '<div style="color:var(--red)">Failed to load patient telemetry.</div>';
+  }
+}
+
+function closeWhatIfModal() {
+  document.getElementById('whatIfModalOverlay').classList.remove('open');
+  _whatIfPid = null;
+}
+
+function renderWhatIfStudio(p) {
+  const v = p.vitals || {};
+  const l = p.labs || {};
+  const baseScore = p.risk_score || 0.0;
+
+  document.getElementById('whatIfTitle').textContent = `🎯 What-If Intervention Studio — ${p.name || p.patient_id} (${p.bed})`;
+
+  document.getElementById('whatIfBody').innerHTML = `
+    <div style="font-size:0.75rem; color:var(--dim); line-height:1.4;">
+      Adjust physiological targets below to simulate real-time therapeutic responses (fluid bolus, vasopressor titration, mechanical ventilation) and inspect immediate AI risk reduction.
+    </div>
+
+    <!-- Presets -->
+    <div style="margin-top:0.4rem;">
+      <span style="font-size:0.65rem; color:var(--dim); text-transform:uppercase; font-weight:700;">Clinical Presets:</span>
+      <div class="whatif-presets">
+        <button class="preset-chip" onclick="applyWhatIfPreset('fluids')">💧 30mL/kg Crystalloid Bolus (+MAP, -Lactate)</button>
+        <button class="preset-chip" onclick="applyWhatIfPreset('vasopressor')">💉 Norepinephrine Titration (MAP=75)</button>
+        <button class="preset-chip" onclick="applyWhatIfPreset('oxygen')">🫁 Supplemental O2 / BiPAP (SpO2=98%)</button>
+        <button class="preset-chip" onclick="applyWhatIfPreset('antibiotics')">💊 Empiric Antimicrobials (Normal WBC & Temp)</button>
+        <button class="preset-chip" onclick="resetWhatIfSliders()">🔄 Reset Baseline</button>
+      </div>
+    </div>
+
+    <div class="whatif-grid" style="margin-top:0.8rem;">
+      <!-- Sliders Column -->
+      <div style="display:flex; flex-direction:column; gap:0.6rem;">
+        <div class="whatif-slider-group">
+          <div class="whatif-slider-header">
+            <span>Mean Arterial Pressure (MAP)</span>
+            <span id="val-MAP" style="color:var(--cyan); font-family:'JetBrains Mono'">${(v.MAP || 75).toFixed(0)} mmHg</span>
+          </div>
+          <input type="range" class="whatif-slider" id="slider-MAP" min="40" max="120" step="1" value="${v.MAP || 75}" oninput="onWhatIfSliderChange('MAP', this.value, 'mmHg')">
+        </div>
+
+        <div class="whatif-slider-group">
+          <div class="whatif-slider-header">
+            <span>Serum Lactate</span>
+            <span id="val-Lactate" style="color:var(--yellow); font-family:'JetBrains Mono'">${(l.Lactate || 1.5).toFixed(1)} mmol/L</span>
+          </div>
+          <input type="range" class="whatif-slider" id="slider-Lactate" min="0.5" max="8.0" step="0.1" value="${l.Lactate || 1.5}" oninput="onWhatIfSliderChange('Lactate', this.value, 'mmol/L')">
+        </div>
+
+        <div class="whatif-slider-group">
+          <div class="whatif-slider-header">
+            <span>Oxygen Saturation (SpO2)</span>
+            <span id="val-O2Sat" style="color:var(--green); font-family:'JetBrains Mono'">${(v.O2Sat || 97).toFixed(0)} %</span>
+          </div>
+          <input type="range" class="whatif-slider" id="slider-O2Sat" min="75" max="100" step="1" value="${v.O2Sat || 97}" oninput="onWhatIfSliderChange('O2Sat', this.value, '%')">
+        </div>
+
+        <div class="whatif-slider-group">
+          <div class="whatif-slider-header">
+            <span>Heart Rate (HR)</span>
+            <span id="val-HR" style="color:var(--bright); font-family:'JetBrains Mono'">${(v.HR || 80).toFixed(0)} bpm</span>
+          </div>
+          <input type="range" class="whatif-slider" id="slider-HR" min="40" max="180" step="1" value="${v.HR || 80}" oninput="onWhatIfSliderChange('HR', this.value, 'bpm')">
+        </div>
+
+        <div class="whatif-slider-group">
+          <div class="whatif-slider-header">
+            <span>Respiratory Rate (Resp)</span>
+            <span id="val-Resp" style="color:var(--bright); font-family:'JetBrains Mono'">${(v.Resp || 18).toFixed(0)} /min</span>
+          </div>
+          <input type="range" class="whatif-slider" id="slider-Resp" min="8" max="45" step="1" value="${v.Resp || 18}" oninput="onWhatIfSliderChange('Resp', this.value, '/min')">
+        </div>
+      </div>
+
+      <!-- Live Comparison Gauge Column -->
+      <div class="whatif-comparison-box">
+        <h4 style="font-size:0.78rem; text-transform:uppercase; color:var(--cyan); margin:0;">Simulated Outcome</h4>
+        <div class="whatif-score-cards">
+          <div class="whatif-card">
+            <div style="font-size:0.65rem; color:var(--dim);">CURRENT BASELINE</div>
+            <div style="font-size:1.6rem; font-weight:800; font-family:'JetBrains Mono'; margin-top:0.2rem;" id="whatifBaseScore">${(baseScore * 100).toFixed(1)}%</div>
+          </div>
+          <div class="whatif-card">
+            <div style="font-size:0.65rem; color:var(--cyan);">COUNTERFACTUAL</div>
+            <div style="font-size:1.6rem; font-weight:800; font-family:'JetBrains Mono'; color:#38bdf8; margin-top:0.2rem;" id="whatifSimScore">${(baseScore * 100).toFixed(1)}%</div>
+          </div>
+        </div>
+
+        <div class="whatif-delta-badge improved" id="whatifDeltaBadge">
+          Δ Risk: 0.0% (Baseline Match)
+        </div>
+
+        <div id="whatifSummaryText" style="font-size:0.7rem; color:var(--text); line-height:1.4; background:rgba(0,0,0,0.25); padding:0.6rem; border-radius:6px;">
+          Adjust sliders on the left to evaluate risk changes.
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function onWhatIfSliderChange(param, val, unit) {
+  document.getElementById(`val-${param}`).textContent = `${parseFloat(val).toFixed(param==='Lactate'?1:0)} ${unit}`;
+  executeWhatIfCalculation();
+}
+
+async function executeWhatIfCalculation() {
+  if (!_whatIfPid) return;
+  const adjustments = {
+    MAP: parseFloat(document.getElementById('slider-MAP').value),
+    Lactate: parseFloat(document.getElementById('slider-Lactate').value),
+    O2Sat: parseFloat(document.getElementById('slider-O2Sat').value),
+    HR: parseFloat(document.getElementById('slider-HR').value),
+    Resp: parseFloat(document.getElementById('slider-Resp').value),
+  };
+
+  if (APP_MODE === 'offline' || !ws) {
+    const data = window.standaloneICUEngine.simulateIntervention(_whatIfPid, adjustments);
+    renderWhatIfResult(data);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/patient/${_whatIfPid}/simulate-intervention`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({adjustments})
+    });
+    const data = await res.json();
+    if (res.ok) {
+      renderWhatIfResult(data);
+    }
+  } catch (e) {
+    const data = window.standaloneICUEngine.simulateIntervention(_whatIfPid, adjustments);
+    renderWhatIfResult(data);
+  }
+}
+
+function renderWhatIfResult(data) {
+  document.getElementById('whatifBaseScore').textContent = `${(data.baseline_risk * 100).toFixed(1)}%`;
+  document.getElementById('whatifSimScore').textContent = `${(data.simulated_risk * 100).toFixed(1)}%`;
+  
+  const badge = document.getElementById('whatifDeltaBadge');
+  if (data.improved) {
+    badge.className = 'whatif-delta-badge improved';
+    badge.textContent = `📉 Risk Reduced by ${data.risk_reduction_pct}% (Δ: ${(data.delta_risk*100).toFixed(1)}%)`;
+  } else if (data.delta_risk > 0.01) {
+    badge.className = 'whatif-delta-badge worse';
+    badge.textContent = `📈 Risk Increased by +${(data.delta_risk*100).toFixed(1)}%`;
+  } else {
+    badge.className = 'whatif-delta-badge improved';
+    badge.textContent = `⚖️ Stable Risk (Δ: ${(data.delta_risk*100).toFixed(1)}%)`;
+  }
+  document.getElementById('whatifSummaryText').textContent = data.clinical_summary;
+}
+
+function applyWhatIfPreset(preset) {
+  if (!_whatIfBaseData) return;
+  const v = _whatIfBaseData.vitals || {};
+  const l = _whatIfBaseData.labs || {};
+
+  if (preset === 'fluids') {
+    document.getElementById('slider-MAP').value = Math.max(72, (v.MAP || 60) + 12);
+    document.getElementById('slider-Lactate').value = Math.max(1.2, (l.Lactate || 3.0) * 0.65);
+    document.getElementById('val-MAP').textContent = `${document.getElementById('slider-MAP').value} mmHg`;
+    document.getElementById('val-Lactate').textContent = `${parseFloat(document.getElementById('slider-Lactate').value).toFixed(1)} mmol/L`;
+  } else if (preset === 'vasopressor') {
+    document.getElementById('slider-MAP').value = 75;
+    document.getElementById('val-MAP').textContent = `75 mmHg`;
+  } else if (preset === 'oxygen') {
+    document.getElementById('slider-O2Sat').value = 98;
+    document.getElementById('slider-Resp').value = 16;
+    document.getElementById('val-O2Sat').textContent = `98 %`;
+    document.getElementById('val-Resp').textContent = `16 /min`;
+  } else if (preset === 'antibiotics') {
+    document.getElementById('slider-HR').value = 75;
+    document.getElementById('val-HR').textContent = `75 bpm`;
+  }
+  executeWhatIfCalculation();
+}
+
+function resetWhatIfSliders() {
+  if (!_whatIfBaseData) return;
+  renderWhatIfStudio(_whatIfBaseData);
+}
+
+// ── 📋 Surviving Sepsis Campaign (SSC) Modal ──────────────────
+async function openSscModal(pid) {
+  document.getElementById('sscModalOverlay').classList.add('open');
+  document.getElementById('sscBody').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--dim)">Generating Hour-1 bundle…</div>';
+
+  if (APP_MODE === 'offline' || !ws) {
+    const p = window.standaloneICUEngine.getPatientSummary(pid);
+    renderSscBundle({
+      patient_id: p.patient_id,
+      risk_level: p.risk_level,
+      protocol_name: 'Surviving Sepsis Campaign 2026 Hour-1 Bundle',
+      actions: p.ssc_bundle
+    });
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/patient/${pid}/protocol`);
+    const data = await res.json();
+    renderSscBundle(data);
+  } catch (e) {
+    const p = window.standaloneICUEngine.getPatientSummary(pid);
+    renderSscBundle({
+      patient_id: p.patient_id,
+      risk_level: p.risk_level,
+      protocol_name: 'Surviving Sepsis Campaign 2026 Hour-1 Bundle',
+      actions: p.ssc_bundle
+    });
+  }
+}
+
+function closeSscModal() {
+  document.getElementById('sscModalOverlay').classList.remove('open');
+}
+
+function renderSscBundle(data) {
+  document.getElementById('sscTitle').textContent = `📋 Surviving Sepsis Hour-1 Bundle — ${data.patient_id}`;
+
+  const actions = data.actions || [];
+  document.getElementById('sscBody').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.25); padding:0.6rem 0.8rem; border-radius:6px;">
+      <div>
+        <div style="font-size:0.68rem; color:var(--dim);">CLINICAL PROTOCOL STATUS</div>
+        <div style="font-size:0.9rem; font-weight:800; color:var(--cyan);">${data.protocol_name}</div>
+      </div>
+      <span class="risk-pill ${data.risk_level}">${data.risk_level} URGENCY</span>
+    </div>
+
+    <div class="ssc-container" style="margin-top:0.8rem;">
+      ${actions.map((act, i) => `
+        <div class="ssc-card" id="ssc-card-${i}">
+          <input type="checkbox" class="ssc-checkbox" id="chk-${i}" onchange="toggleSscItem(${i})">
+          <div class="ssc-content">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <span class="ssc-badge-prio ${act.priority}">${act.priority}</span>
+              <span class="ssc-title">${act.action || act.item}</span>
+            </div>
+            <div class="ssc-meta"><strong>Category:</strong> ${act.category || 'Resuscitation'} &nbsp;|&nbsp; <strong>Standard:</strong> ${act.guideline || 'SSC 2026'}</div>
+            <div class="ssc-rationale">💡 ${act.rationale}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem;">
+      <button class="action-btn purple" style="max-width:200px;" onclick="closeSscModal()">✓ Acknowledge Bundle</button>
+    </div>
+  `;
+}
+
+function toggleSscItem(index) {
+  const card = document.getElementById(`ssc-card-${index}`);
+  const chk = document.getElementById(`chk-${index}`);
+  if (chk && card) {
+    if (chk.checked) card.classList.add('done');
+    else card.classList.remove('done');
+  }
+}
+
+// ── 🌐 HL7 FHIR R4 Bundle Modal ──────────────────────────────
+let _cachedFhirJson = null;
+let _cachedFhirPid = null;
+
+async function openFhirModal(pid) {
+  _cachedFhirPid = pid;
+  document.getElementById('fhirModalOverlay').classList.add('open');
+  document.getElementById('fhirBody').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--dim)">Generating FHIR R4 bundle…</div>';
+
+  if (APP_MODE === 'offline' || !ws) {
+    const fhir = window.standaloneICUEngine.generateFhirBundle(pid);
+    _cachedFhirJson = fhir;
+    document.getElementById('fhirTitle').textContent = `🌐 HL7 FHIR R4 Bundle — ${pid}`;
+    document.getElementById('fhirBody').innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+        <span style="font-size:0.72rem; color:var(--dim);">Standard: <strong>HL7 FHIR Release 4 (JSON)</strong></span>
+        <button class="action-btn purple" style="max-width:180px; padding:0.35rem 0.6rem;" onclick="downloadFhirJson()">💾 Download JSON</button>
+      </div>
+      <div class="fhir-box">${JSON.stringify(fhir, null, 2)}</div>
+    `;
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/patient/${pid}/fhir`);
+    const fhir = await res.json();
+    _cachedFhirJson = fhir;
+    document.getElementById('fhirTitle').textContent = `🌐 HL7 FHIR R4 Bundle — ${pid}`;
+    document.getElementById('fhirBody').innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+        <span style="font-size:0.72rem; color:var(--dim);">Standard: <strong>HL7 FHIR Release 4 (JSON)</strong></span>
+        <button class="action-btn purple" style="max-width:180px; padding:0.35rem 0.6rem;" onclick="downloadFhirJson()">💾 Download JSON</button>
+      </div>
+      <div class="fhir-box">${JSON.stringify(fhir, null, 2)}</div>
+    `;
+  } catch (e) {
+    const fhir = window.standaloneICUEngine.generateFhirBundle(pid);
+    _cachedFhirJson = fhir;
+    document.getElementById('fhirTitle').textContent = `🌐 HL7 FHIR R4 Bundle — ${pid}`;
+    document.getElementById('fhirBody').innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+        <span style="font-size:0.72rem; color:var(--dim);">Standard: <strong>HL7 FHIR Release 4 (JSON)</strong></span>
+        <button class="action-btn purple" style="max-width:180px; padding:0.35rem 0.6rem;" onclick="downloadFhirJson()">💾 Download JSON</button>
+      </div>
+      <div class="fhir-box">${JSON.stringify(fhir, null, 2)}</div>
+    `;
+  }
+}
+
+function closeFhirModal() {
+  document.getElementById('fhirModalOverlay').classList.remove('open');
+  _cachedFhirJson = null;
+}
+
+function downloadFhirJson() {
+  if (!_cachedFhirJson) return;
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(_cachedFhirJson, null, 2));
+  const downloadAnchor = document.createElement('a');
+  downloadAnchor.setAttribute("href", dataStr);
+  downloadAnchor.setAttribute("download", `fhir_sepsis_assessment_${_cachedFhirPid||'patient'}.json`);
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeModal();
+    closeWhatIfModal();
+    closeSscModal();
+    closeFhirModal();
+    closeSettingsModal();
+  }
+});
+
+// Native Android back button listener
+window.addEventListener('popstate', () => {
+  if (document.querySelector('.modal-overlay.open')) {
+    closeModal();
+    closeWhatIfModal();
+    closeSscModal();
+    closeFhirModal();
+    closeSettingsModal();
+    if (sidebarOpen) toggleSidebar(false);
+  }
+});
+
+// ── Sidebar Control Center Logic ─────────────────────────────
+let sidebarOpen = false;
+let statsInterval = null;
+
+function toggleSidebar(open) {
+  const sidebar = document.getElementById('controlSidebar');
+  sidebarOpen = open;
+  if (open) {
+    sidebar.classList.add('open');
+    updateSidebarStats();
+    statsInterval = setInterval(updateSidebarStats, 3000);
+  } else {
+    sidebar.classList.remove('open');
+    if (statsInterval) {
+      clearInterval(statsInterval);
+      statsInterval = null;
+    }
+  }
+}
+
+function switchSidebarTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.sidebar-tabs .tab-btn').forEach(el => el.classList.remove('active'));
+  
+  document.getElementById(tabId).classList.add('active');
+  document.getElementById(`btn-${tabId}`).classList.add('active');
+}
+
+async function updateSidebarStats() {
+  if (!sidebarOpen) return;
+  if (APP_MODE === 'offline' || !ws) {
+    document.getElementById('sbWsConns').textContent = 'Local (Offline)';
+    document.getElementById('sbTicks').textContent = window.standaloneICUEngine.tick;
+    document.getElementById('sbModelName').textContent = window.standaloneICUEngine.modelType;
+    document.getElementById('sbUptime').textContent = 'Active (Mobile)';
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/status`);
+    if (!res.ok) throw new Error('API down');
+    const data = await res.json();
+    
+    document.getElementById('sbWsConns').textContent = data.ws_connections;
+    document.getElementById('sbTicks').textContent = data.tick_count;
+    document.getElementById('sbModelName').textContent = data.model_name;
+    
+    const uptimeSec = data.uptime_seconds;
+    const hours = Math.floor(uptimeSec / 3600);
+    const mins = Math.floor((uptimeSec % 3600) / 60);
+    const secs = uptimeSec % 60;
+    document.getElementById('sbUptime').textContent = `${hours}h ${mins}m ${secs}s`;
+  } catch (e) {
+    document.getElementById('sbWsConns').textContent = 'Local (Offline)';
+    document.getElementById('sbTicks').textContent = window.standaloneICUEngine.tick;
+  }
+}
+
+async function updatePatientTrajectory(trajectory) {
+  const pid = document.getElementById('simTargetPid').value;
+  const resultEl = document.getElementById('simActionResult');
+  if (!pid) {
+    resultEl.textContent = '❌ Please select a patient';
+    return;
+  }
+  
+  resultEl.textContent = 'Updating...';
+  if (APP_MODE === 'offline' || !ws) {
+    const res = window.standaloneICUEngine.setTrajectory(pid, trajectory);
+    resultEl.textContent = `✅ ${res.message}`;
+    setTimeout(() => { resultEl.textContent = ''; }, 3000);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/simulator/trajectory`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({patient_id: pid, trajectory: trajectory})
+    });
+    const data = await res.json();
+    if (res.ok) {
+      resultEl.textContent = `✅ ${data.message}`;
+      setTimeout(() => { resultEl.textContent = ''; }, 3000);
+    } else {
+      resultEl.textContent = `❌ Error: ${data.detail || 'Failed'}`;
+    }
+  } catch (e) {
+    const res = window.standaloneICUEngine.setTrajectory(pid, trajectory);
+    resultEl.textContent = `✅ ${res.message}`;
+    setTimeout(() => { resultEl.textContent = ''; }, 3000);
+  }
+}
+
+let _dropdownsInitialized = false;
+function updateIngestDropdowns(patients) {
+  const simSel = document.getElementById('simTargetPid');
+  const ingestSel = document.getElementById('ingestPid');
+  if (!simSel || !ingestSel) return;
+  
+  if (_dropdownsInitialized && simSel.children.length === patients.length) return;
+  
+  const currentSimVal = simSel.value;
+  const currentIngestVal = ingestSel.value;
+  
+  simSel.innerHTML = '';
+  ingestSel.innerHTML = '';
+  
+  patients.forEach(p => {
+    const opt1 = document.createElement('option');
+    opt1.value = p.patient_id;
+    opt1.textContent = `${p.bed} - ${p.name}`;
+    simSel.appendChild(opt1);
+    
+    const opt2 = document.createElement('option');
+    opt2.value = p.patient_id;
+    opt2.textContent = `${p.bed} - ${p.name}`;
+    ingestSel.appendChild(opt2);
+  });
+  
+  if (currentSimVal) simSel.value = currentSimVal;
+  if (currentIngestVal) ingestSel.value = currentIngestVal;
+  _dropdownsInitialized = true;
+}
+
+// Intercept ward update to populate select boxes
+const originalHandleWardUpdate = handleWardUpdate;
+handleWardUpdate = function(data) {
+  originalHandleWardUpdate(data);
+  if (data.patients) {
+    updateIngestDropdowns(data.patients);
+  }
+
+  // Haptic alert for critical status
+  if (VIBRATION_ENABLED && data.alerts && data.alerts.length > 0 && navigator.vibrate) {
+    try { navigator.vibrate([200, 100, 200]); } catch(e){}
+  }
+};
+
+async function submitManualIngest(event) {
+  event.preventDefault();
+  const pid = document.getElementById('ingestPid').value;
+  const resultEl = document.getElementById('ingestResult');
+  
+  const readings = {
+    patient_id: pid,
+    HR: parseFloat(document.getElementById('ingestHR').value) || null,
+    O2Sat: parseFloat(document.getElementById('ingestO2Sat').value) || null,
+    Temp: parseFloat(document.getElementById('ingestTemp').value) || null,
+    SBP: parseFloat(document.getElementById('ingestSBP').value) || null,
+    MAP: parseFloat(document.getElementById('ingestMAP').value) || null,
+    Resp: parseFloat(document.getElementById('ingestResp').value) || null,
+    Lactate: parseFloat(document.getElementById('ingestLactate').value) || null,
+    Creatinine: parseFloat(document.getElementById('ingestCreatinine').value) || null,
+  };
+  
+  for (const key in readings) {
+    if (readings[key] === null) delete readings[key];
+  }
+  
+  resultEl.style.display = 'block';
+  resultEl.style.background = 'rgba(255,255,255,0.05)';
+  resultEl.style.color = 'var(--text)';
+  resultEl.textContent = 'Posting reading...';
+
+  if (APP_MODE === 'offline' || !ws) {
+    try {
+      const data = window.standaloneICUEngine.manualIngest(readings);
+      resultEl.style.background = 'rgba(34,197,94,0.15)';
+      resultEl.style.color = '#a7f3d0';
+      resultEl.textContent = `Success! Risk: ${data.risk_score.toFixed(3)} (${data.risk_level})`;
+      document.getElementById('manualIngestForm').reset();
+    } catch(e) {
+      resultEl.style.background = 'rgba(239,68,68,0.15)';
+      resultEl.style.color = '#fca5a5';
+      resultEl.textContent = 'Error updating patient';
+    }
+    return;
+  }
+  
+  try {
+    const res = await fetch(`${API_BASE}/api/ingest`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(readings)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      resultEl.style.background = 'rgba(34,197,94,0.15)';
+      resultEl.style.color = '#a7f3d0';
+      resultEl.textContent = `Success! Risk: ${data.risk_score.toFixed(3)} (${data.risk_level})`;
+      document.getElementById('manualIngestForm').reset();
+    } else {
+      resultEl.style.background = 'rgba(239,68,68,0.15)';
+      resultEl.style.color = '#fca5a5';
+      resultEl.textContent = `Error: ${data.detail || 'Failed'}`;
+    }
+  } catch (e) {
+    const data = window.standaloneICUEngine.manualIngest(readings);
+    resultEl.style.background = 'rgba(34,197,94,0.15)';
+    resultEl.style.color = '#a7f3d0';
+    resultEl.textContent = `Success! Risk: ${data.risk_score.toFixed(3)} (${data.risk_level})`;
+  }
+}
+
+async function submitManualFHIR() {
+  const pid = document.getElementById('ingestPid').value;
+  const resultEl = document.getElementById('ingestResult');
+  
+  const HR = parseFloat(document.getElementById('ingestHR').value) || null;
+  const O2Sat = parseFloat(document.getElementById('ingestO2Sat').value) || null;
+  
+  if (!HR && !O2Sat) {
+    resultEl.style.display = 'block';
+    resultEl.style.background = 'rgba(239,68,68,0.15)';
+    resultEl.style.color = '#fca5a5';
+    resultEl.textContent = 'Please fill HR or SpO2 for FHIR demo';
+    return;
+  }
+  
+  const bundle = {
+    resourceType: "Bundle",
+    entry: []
+  };
+  
+  if (HR) {
+    bundle.entry.push({
+      resource: {
+        resourceType: "Observation",
+        subject: { reference: `Patient/${pid}` },
+        code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart Rate" }] },
+        valueQuantity: { value: HR, unit: "bpm" }
+      }
+    });
+  }
+  
+  if (O2Sat) {
+    bundle.entry.push({
+      resource: {
+        resourceType: "Observation",
+        subject: { reference: `Patient/${pid}` },
+        code: { coding: [{ system: "http://loinc.org", code: "2708-6", display: "Oxygen Saturation" }] },
+        valueQuantity: { value: O2Sat, unit: "%" }
+      }
+    });
+  }
+  
+  resultEl.style.display = 'block';
+  resultEl.style.background = 'rgba(255,255,255,0.05)';
+  resultEl.style.color = 'var(--text)';
+  resultEl.textContent = 'Posting FHIR Bundle...';
+
+  if (APP_MODE === 'offline' || !ws) {
+    window.standaloneICUEngine.manualIngest({ patient_id: pid, ...(HR && {HR}), ...(O2Sat && {O2Sat}) });
+    resultEl.style.background = 'rgba(34,197,94,0.15)';
+    resultEl.style.color = '#a7f3d0';
+    resultEl.textContent = `FHIR Success! Updated telemetry for ${pid}`;
+    document.getElementById('manualIngestForm').reset();
+    return;
+  }
+  
+  try {
+    const res = await fetch(`${API_BASE}/api/fhir/Observation`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(bundle)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      resultEl.style.background = 'rgba(34,197,94,0.15)';
+      resultEl.style.color = '#a7f3d0';
+      const pData = data.results[pid];
+      resultEl.textContent = `FHIR Success! Risk: ${pData.risk_score.toFixed(3)} (${pData.risk_level})`;
+      document.getElementById('manualIngestForm').reset();
+    } else {
+      resultEl.style.background = 'rgba(239,68,68,0.15)';
+      resultEl.style.color = '#fca5a5';
+      resultEl.textContent = `Error: ${data.detail || 'Failed'}`;
+    }
+  } catch (e) {
+    window.standaloneICUEngine.manualIngest({ patient_id: pid, ...(HR && {HR}), ...(O2Sat && {O2Sat}) });
+    resultEl.style.background = 'rgba(34,197,94,0.15)';
+    resultEl.style.color = '#a7f3d0';
+    resultEl.textContent = `FHIR Success! Updated telemetry for ${pid}`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PATIENT CONDITION PANEL
+// ═══════════════════════════════════════════════════════════════
+let _condPatientsCache = {};
+
+function selectPatientForCondition(pid) {
+  _selectedPid = pid;
+  const sel = document.getElementById('condPatientSel');
+  if (sel && pid) {
+    sel.value = pid;
+    renderConditionPanel(pid);
+  }
+  // Immediately update visual highlight on all cards
+  const grid = document.getElementById('wardGrid');
+  if (grid) {
+    Array.from(grid.children).forEach(card => {
+      card.classList.toggle('selected-card', card.id === `card-${pid}`);
+    });
+  }
+}
+
+function populateCondPatientSelector(patients) {
+  const sel = document.getElementById('condPatientSel');
+  if (!sel) return;
+  const curVal = sel.value;
+  sel.innerHTML = '<option value="">— Select a patient —</option>';
+  patients.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.patient_id;
+    opt.textContent = `${p.bed} · ${p.name} · ${p.risk_level}`;
+    sel.appendChild(opt);
+    _condPatientsCache[p.patient_id] = p;
+  });
+  if (curVal && _condPatientsCache[curVal]) {
+    sel.value = curVal;
+    _selectedPid = curVal;
+    renderConditionPanel(curVal);
+  } else if (patients.length > 0) {
+    // If no patient selected or selected patient is gone, default to highest risk
+    if (!_selectedPid || !_condPatientsCache[_selectedPid]) {
+      const order = {CRITICAL:0,HIGH:1,MODERATE:2,LOW:3};
+      const top = [...patients].sort((a,b)=>(order[a.risk_level]||3)-(order[b.risk_level]||3))[0];
+      _selectedPid = top.patient_id;
+    }
+    sel.value = _selectedPid;
+    renderConditionPanel(_selectedPid);
+  }
+}
+
+function switchCondTab(tabName) {
+  ['overview','treatment','monitoring','labs'].forEach(t => {
+    document.getElementById(`ctab-${t}`)?.classList.toggle('active', t === tabName);
+    document.getElementById(`cbody-${t}`)?.classList.toggle('active', t === tabName);
+  });
+}
+
+function renderConditionPanel(pid) {
+  if (!pid) return;
+  const p = _condPatientsCache[pid];
+  if (!p) return;
+
+  const level = p.risk_level || 'LOW';
+  const badge = document.getElementById('condPatientRiskBadge');
+  if (badge) badge.innerHTML = `<span class="cond-risk-badge ${level}">${p.risk_emoji||''} ${level} RISK — ${(p.risk_score*100||0).toFixed(1)}%</span>`;
+
+  renderCondOverview(p);
+  renderCondTreatment(p);
+  renderCondMonitoring(p);
+  renderCondLabs(p);
+}
+
+function conditionDescription(p) {
+  const level = p.risk_level || 'LOW';
+  const score = p.risk_score || 0;
+  const traj  = p.trajectory || 'stable';
+  const cs    = p.clinical_scores || {};
+  const v     = p.vitals || {};
+
+  const condMap = {
+    LOW: {
+      title: 'Stable — Low Sepsis Risk',
+      emoji: '🟢',
+      summary: 'Patient vitals are within acceptable limits. AI risk score is low with no immediate threat of sepsis. Continued monitoring is recommended.',
+      pathophysiology: 'Immune system is effectively controlling any inflammatory response. Organ perfusion appears adequate based on current hemodynamic parameters.',
+      urgency: 'Routine monitoring. No immediate intervention required.',
+      color: '#22c55e'
+    },
+    MODERATE: {
+      title: 'Watchful — Moderate Sepsis Risk',
+      emoji: '🟡',
+      summary: 'Patient shows early signs that may indicate developing infection or systemic inflammatory response. Vigilant observation and early intervention preparation advised.',
+      pathophysiology: 'Possible early-stage SIRS (Systemic Inflammatory Response Syndrome). Inflammatory cytokines may be elevating. Tissue perfusion could be compromised if trajectory worsens.',
+      urgency: 'Escalate monitoring frequency. Review antibiotic coverage. Prepare fluid resuscitation.',
+      color: '#eab308'
+    },
+    HIGH: {
+      title: 'High Alert — Elevated Sepsis Risk',
+      emoji: '🟠',
+      summary: 'Patient is showing multiple signs consistent with sepsis. Immediate clinical assessment and intervention is necessary to prevent progression to septic shock.',
+      pathophysiology: 'Dysregulated host response to infection likely causing systemic inflammation. Evidence of organ stress. Risk of hemodynamic instability is significant.',
+      urgency: 'IMMEDIATE: Begin Surviving Sepsis Campaign Hour-1 Bundle. Notify attending physician.',
+      color: '#f97316'
+    },
+    CRITICAL: {
+      title: '🚨 Critical — Severe Sepsis / Septic Shock Risk',
+      emoji: '🔴',
+      summary: 'Patient is at critical risk for septic shock. Life-threatening organ dysfunction is possible. Emergency intervention required NOW.',
+      pathophysiology: 'Severe systemic inflammatory response with evidence of multi-organ dysfunction. Vasodilatory shock physiology may be present. Microvascular dysfunction and altered cellular metabolism indicate critical illness.',
+      urgency: '⚠️ EMERGENCY: Immediate ICU-level intervention, vasopressor consideration, urgent physician notification.',
+      color: '#ef4444'
+    }
+  };
+  return condMap[level] || condMap.LOW;
+}
+
+function renderCondOverview(p) {
+  const el = document.getElementById('condOverviewContent');
+  if (!el) return;
+  const cond = conditionDescription(p);
+  const v = p.vitals || {};
+  const cs = p.clinical_scores || {};
+
+  const abnormals = [];
+  if (v.HR  && (v.HR  < 60  || v.HR  > 100)) abnormals.push(`HR ${v.HR?.toFixed(0)} bpm (${v.HR > 100 ? 'tachycardia' : 'bradycardia'})`);
+  if (v.Temp && (v.Temp < 36 || v.Temp > 38.3)) abnormals.push(`Temp ${v.Temp?.toFixed(1)}°C (${v.Temp > 38.3 ? 'fever' : 'hypothermia'})`);
+  if (v.MAP  && v.MAP  < 65)  abnormals.push(`MAP ${v.MAP?.toFixed(0)} mmHg (hypoperfusion)`);
+  if (v.Resp && (v.Resp < 12 || v.Resp > 20)) abnormals.push(`RR ${v.Resp?.toFixed(0)} /min (${v.Resp > 20 ? 'tachypnea' : 'bradypnea'})`);
+  if (v.O2Sat && v.O2Sat < 94) abnormals.push(`SpO₂ ${v.O2Sat?.toFixed(0)}% (hypoxemia)`);
+  if (v.SBP  && v.SBP  < 90)  abnormals.push(`SBP ${v.SBP?.toFixed(0)} mmHg (hypotension)`);
+
+  el.innerHTML = `
+    <div class="cond-grid">
+      <div class="cond-block" style="border-color: ${cond.color}30;">
+        <h4>${cond.emoji} Clinical Status</h4>
+        <p><strong style="color:${cond.color}">${cond.title}</strong></p>
+        <p>${cond.summary}</p>
+        <div style="margin-top:0.65rem; padding:0.5rem; background:rgba(255,255,255,0.03); border-radius:6px; border-left: 3px solid ${cond.color};">
+          <div style="font-size:0.65rem; text-transform:uppercase; color:var(--dim); font-weight:700; margin-bottom:0.3rem;">Urgency Level</div>
+          <div style="font-size:0.73rem; color:var(--text);">${cond.urgency}</div>
+        </div>
+      </div>
+      <div class="cond-block">
+        <h4>🔬 Pathophysiology</h4>
+        <p>${cond.pathophysiology}</p>
+        ${abnormals.length > 0 ? `
+        <div style="margin-top:0.6rem;">
+          <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; color:var(--red); margin-bottom:0.3rem;">⚠️ Abnormal Findings</div>
+          <ul>${abnormals.map(a=>`<li>${a}</li>`).join('')}</ul>
+        </div>` : '<p style="color:var(--green); margin-top:0.5rem;">✔ All key vitals within normal range</p>'}
+      </div>
+      <div class="cond-block">
+        <h4>📊 Clinical Scores</h4>
+        <p>These validated scoring systems help quantify illness severity:</p>
+        <ul>
+          <li><strong>qSOFA: ${cs.qsofa ?? '—'}/3</strong> — Quick bedside sepsis screening${cs.qsofa >= 2 ? ' — <span style="color:#f87171">⚠️ Possible sepsis</span>' : ''}</li>
+          <li><strong>NEWS2: ${cs.news2 ?? '—'}/20</strong> — National Early Warning Score${cs.news2 >= 7 ? ' — <span style="color:#f87171">⚠️ Urgent review needed</span>' : cs.news2 >= 5 ? ' — <span style="color:#fb923c">Escalate care</span>' : ''}</li>
+          <li><strong>Partial SOFA: ${cs.sofa ?? '—'}/8</strong> — Organ dysfunction assessment${cs.sofa >= 4 ? ' — <span style="color:#f87171">⚠️ Multi-organ risk</span>' : ''}</li>
+        </ul>
+      </div>
+      <div class="cond-block">
+        <h4>🧬 AI Model Interpretation</h4>
+        <p>${p.interpretation || 'No AI interpretation available.'}</p>
+        <div style="margin-top:0.5rem; font-size:0.68rem; color:var(--dim);">
+          Trajectory: <strong class="traj-${p.trajectory}" style="color:${{stable:'var(--green)',recovering:'var(--cyan)',deteriorating:'var(--yellow)',septic:'var(--red)'}[p.trajectory]||'white'}">${p.trajectory || '—'}</strong>
+          &nbsp;|&nbsp; ICU Stay: ${(p.icu_hours||0).toFixed(1)}h
+          &nbsp;|&nbsp; Model: ${p.model_used || 'BiLSTM'}
+        </div>
+        ${p.top_features?.length ? `
+        <div style="margin-top:0.6rem;">
+          <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; color:var(--dim); margin-bottom:0.3rem;">Top Risk Drivers</div>
+          ${p.top_features.slice(0,3).map(f=>`
+          <div style="display:flex; justify-content:space-between; font-size:0.7rem; padding:0.2rem 0; border-bottom:1px dashed rgba(255,255,255,0.04);">
+            <span>${f.feature}</span>
+            <span style="color:${f.contribution>=0?'#f87171':'#60a5fa'}; font-family:'JetBrains Mono'">${f.contribution>=0?'+':''}${f.contribution.toFixed(3)}</span>
+          </div>`).join('')}
+        </div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderCondTreatment(p) {
+  const el = document.getElementById('condTreatmentContent');
+  if (!el) return;
+  const level = p.risk_level || 'LOW';
+  const v = p.vitals || {};
+  const labs = p.labs || {};
+
+  const treatProtocols = {
+    LOW: [
+      { icon: '👀', title: 'Continue Routine Monitoring', desc: 'Vital signs every 4-8 hours. No urgent interventions required.' },
+      { icon: '💧', title: 'Adequate Hydration', desc: 'Ensure adequate oral or IV fluid intake. Target urine output >0.5 mL/kg/hr.' },
+      { icon: '🩸', title: 'Routine Labs', desc: 'Standard CBC, BMP per ward protocol. No urgent lab draws needed.' },
+      { icon: '📋', title: 'Infection Source Review', desc: 'Review cultures, identify any potential infectious source. Ensure appropriate antibiotic prophylaxis if indicated.' }
+    ],
+    MODERATE: [
+      { icon: '⏱️', title: 'Increase Monitoring Frequency', desc: 'Vital signs every 1-2 hours. Continuous SpO₂ monitoring. Trending of clinical scores.' },
+      { icon: '💧', title: 'IV Fluid Assessment', desc: `Assess fluid status. If MAP < 65 mmHg or lactate rising, initiate crystalloid bolus (500mL NS or LR over 30 min). ${v.MAP && v.MAP < 70 ? '⚠️ MAP is low — fluid bolus recommended' : ''}` },
+      { icon: '🦠', title: 'Culture & Antibiotic Review', desc: 'Draw blood cultures x2 (different sites). Review current antibiotic regimen. Consider broadening coverage if deterioration suspected.' },
+      { icon: '🧪', title: 'Stat Lab Panel', desc: `Order: CBC with differential, CMP, lactate, procalcitonin, coagulation panel. ${labs.Lactate > 2 ? `⚠️ Lactate ${labs.Lactate?.toFixed(1)} — Repeat in 2h` : ''}` },
+      { icon: '📣', title: 'Notify Attending', desc: 'Escalate to attending physician. Document clinical concerns. Prepare for possible ICU transfer.' }
+    ],
+    HIGH: [
+      { icon: '🚨', title: 'ACTIVATE SEPSIS ALERT', desc: 'Initiate institutional sepsis response. Notify rapid response team and attending physician immediately.' },
+      { icon: '💉', title: 'Hour-1 Resuscitation Bundle', desc: `Draw blood cultures x2. Administer empiric broad-spectrum IV antibiotics within 1 hour. ${v.MAP < 65 ? '⚠️ Start 30 mL/kg crystalloid bolus for MAP < 65 or lactate ≥ 4' : 'Administer 30 mL/kg crystalloid bolus if indicated.'}` },
+      { icon: '🏥', title: 'ICU Transfer Preparation', desc: 'Prepare for ICU transfer. Ensure IV access (2 large-bore IVs or central line). Consider arterial line for continuous BP monitoring.' },
+      { icon: '😮‍💨', title: 'Respiratory Support', desc: `${v.O2Sat < 92 ? '⚠️ SpO₂ critically low — apply high-flow O₂ or consider NIV/intubation' : 'Supplemental O₂ to maintain SpO₂ ≥ 94%. Prepare for escalation if respiratory status declines.'}` },
+      { icon: '💊', title: 'Vasopressor Consideration', desc: `${v.MAP < 65 ? '⚠️ MAP < 65 mmHg despite fluids — initiate Norepinephrine 0.01-0.5 mcg/kg/min titrated to MAP ≥ 65 mmHg' : 'Have vasopressors (Norepinephrine) prepared. Initiate if MAP < 65 despite adequate fluid resuscitation.'}` },
+      { icon: '🔬', title: 'Aggressive Lab Monitoring', desc: 'Repeat lactate in 2h. CBC, CMP, ABG, coagulation panel STAT. Monitor trend every 2-4 hours.' }
+    ],
+    CRITICAL: [
+      { icon: '🆘', title: '⚠️ EMERGENCY: CODE SEPSIS', desc: 'Immediate emergency response. Call ICU attending STAT. Activate institutional code sepsis protocol NOW.' },
+      { icon: '💉', title: 'Aggressive Fluid Resuscitation', desc: `Initiate 30 mL/kg IV crystalloid bolus IMMEDIATELY. ${labs.Lactate > 4 ? `⚠️ Lactate ${labs.Lactate?.toFixed(1)} ≥ 4 — Septic shock criteria met. Reassess fluid responsiveness continuously.` : 'Reassess after every 500mL. Target MAP ≥ 65 mmHg.'}` },
+      { icon: '💊', title: 'START Norepinephrine NOW', desc: `Vasopressor initiation indicated. ${v.MAP < 65 ? `⚠️ MAP is ${v.MAP?.toFixed(0)} mmHg — CRITICAL. ` : ''}Norepinephrine 0.1-0.5 mcg/kg/min via central line. Target MAP ≥ 65 mmHg. Add Vasopressin 0.03 U/min if NE dose escalating.` },
+      { icon: '🦠', title: 'Emergency Cultures + Antibiotics', desc: 'Blood cultures x2 within 5 minutes. Start broad-spectrum antibiotics STAT (Piperacillin-Tazobactam + Vancomycin, or per local protocol). Do NOT delay for cultures.' },
+      { icon: '😮‍💨', title: 'Airway Management', desc: `${v.O2Sat < 90 ? '🆘 CRITICAL SpO₂ — Emergent intubation may be required. RSI preparation: Ketamine + Succinylcholine. Bag-valve-mask ready.' : 'High-flow O₂ via NRB mask. Prepare for intubation if respiratory failure imminent. Target SpO₂ ≥ 94%.'}` },
+      { icon: '💉', title: 'Hydrocortisone (if refractory shock)', desc: 'If vasopressor requirements escalating: Hydrocortisone 200mg/day continuous infusion or 50mg q6h IV. Reduces vasopressor requirements in septic shock.' },
+      { icon: '🩸', title: 'Point-of-Care Labs STAT', desc: 'ABG for pH/lactate/PaO₂. INR, PT/aPTT (DIC screen). Serial lactate q2h until normalizing. Troponin, BNP, procalcitonin.' }
+    ]
+  };
+
+  const steps = treatProtocols[level] || treatProtocols.LOW;
+  const timeframe = {LOW: 'Routine (PRN)', MODERATE: 'Within 2-4 hours', HIGH: 'Within 1 hour', CRITICAL: 'IMMEDIATE — NOW'}[level];
+  const tfColor = {LOW:'var(--green)',MODERATE:'var(--yellow)',HIGH:'var(--orange)',CRITICAL:'var(--red)'}[level];
+
+  el.innerHTML = `
+    <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; padding:0.65rem 0.9rem; background:rgba(255,255,255,0.03); border-radius:var(--r-sm); border:1px solid var(--border);">
+      <div>
+        <div style="font-size:0.65rem; text-transform:uppercase; color:var(--dim); font-weight:700;">Treatment Timeframe</div>
+        <div style="font-size:1rem; font-weight:800; color:${tfColor}; font-family:'JetBrains Mono';">${timeframe}</div>
+      </div>
+      <div style="flex:1; font-size:0.72rem; color:var(--dim);">
+        Evidence-based protocol following Surviving Sepsis Campaign 2021 guidelines
+      </div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      ${steps.map((s,i) => `
+      <div class="treat-step">
+        <div class="treat-step-num">${i+1}</div>
+        <div class="treat-step-text">
+          <div style="font-weight:700; color:var(--bright); margin-bottom:0.2rem;">${s.icon} ${s.title}</div>
+          <div>${s.desc}</div>
+        </div>
+      </div>`).join('')}
+    </div>
+    <div style="margin-top:0.85rem; font-size:0.65rem; color:var(--dim); border-top:1px dashed rgba(255,255,255,0.05); padding-top:0.5rem;">
+      ⚕️ This is a clinical decision support tool. All treatment decisions must be validated by a licensed physician.
+    </div>
+  `;
+}
+
+function renderCondMonitoring(p) {
+  const el = document.getElementById('condMonitoringContent');
+  if (!el) return;
+  const level = p.risk_level || 'LOW';
+  const v = p.vitals || {};
+
+  const monitorFreq = {LOW: 'Every 4-8h', MODERATE: 'Every 1-2h', HIGH: 'Continuous + q1h labs', CRITICAL: 'Continuous / Real-time'}[level];
+  const alerts = [];
+  if (v.HR  > 100) alerts.push('Monitor for tachycardia — may indicate compensatory response to falling perfusion');
+  if (v.MAP && v.MAP < 65) alerts.push('MAP < 65 mmHg — high risk for hypoperfusion. Monitor urine output hourly');
+  if (v.O2Sat && v.O2Sat < 94) alerts.push('SpO₂ below safe threshold — increase O₂ and monitor respiratory status');
+  if (v.Resp && v.Resp > 22) alerts.push('Tachypnea detected — assess for respiratory distress, consider ABG');
+  if (v.Temp && v.Temp > 38.3) alerts.push('Fever — may signal ongoing infection. Trend temperature hourly');
+
+  el.innerHTML = `
+    <div class="cond-grid">
+      <div class="cond-block">
+        <h4>📡 Monitoring Frequency</h4>
+        <p><strong style="color:var(--cyan); font-size:0.85rem;">${monitorFreq}</strong></p>
+        <ul>
+          <li>Vital signs: HR, BP, SpO₂, RR, Temperature</li>
+          <li>Urine output: Target ≥ 0.5 mL/kg/hr</li>
+          <li>Mental status: GCS / AVPU assessment</li>
+          ${level === 'CRITICAL' || level === 'HIGH' ? '<li>Arterial line for continuous BP monitoring</li><li>CVP if central line placed</li>' : ''}
+          ${level === 'CRITICAL' ? '<li>ScvO₂ monitoring if central venous catheter placed</li>' : ''}
+        </ul>
+      </div>
+      <div class="cond-block">
+        <h4>🚨 Alert Thresholds</h4>
+        <ul>
+          <li>HR &gt; 130 or &lt; 50 bpm → Immediate escalation</li>
+          <li>MAP &lt; 65 mmHg → Vasopressor consideration</li>
+          <li>SpO₂ &lt; 90% → Urgent respiratory intervention</li>
+          <li>RR &gt; 28 /min → Consider respiratory failure</li>
+          <li>Urine output &lt; 0.3 mL/kg/hr × 2h → Escalate</li>
+          <li>Lactate rising or &gt; 4 mmol/L → Critical</li>
+        </ul>
+        ${alerts.length > 0 ? `<div style="margin-top:0.5rem; padding:0.5rem; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:6px;">
+          <div style="font-size:0.65rem; font-weight:700; color:var(--red); margin-bottom:0.25rem;">⚠️ Current Alerts</div>
+          <ul>${alerts.map(a=>`<li style="color:#fca5a5; font-size:0.7rem;">${a}</li>`).join('')}</ul>
+        </div>` : '<p style="color:var(--green); margin-top:0.5rem;">✔ No active vital sign alerts</p>'}
+      </div>
+      <div class="cond-block">
+        <h4>🧪 Lab Monitoring Schedule</h4>
+        <ul>
+          ${{LOW: '<li>CBC, BMP: Per ward protocol (every 24-48h)</li><li>Cultures if fever develops</li>',
+             MODERATE: '<li>CBC with diff, CMP, Lactate: q4-6h</li><li>Procalcitonin: baseline + q24h</li><li>Urinalysis, Blood cultures if new fever</li>',
+             HIGH: '<li>Lactate: q2h until &lt; 2 mmol/L</li><li>CBC, CMP, Coags: q4h</li><li>Blood cultures x2 STAT if not drawn</li><li>ABG if respiratory compromise</li>',
+             CRITICAL: '<li>Lactate: q1-2h</li><li>ABG: q2-4h</li><li>CBC, CMP, LFTs, Coags: q4h</li><li>Troponin, BNP baseline</li><li>Serial procalcitonin</li>'}[level]}
+        </ul>
+      </div>
+      <div class="cond-block">
+        <h4>🏥 Escalation Criteria</h4>
+        <p>Transfer to higher level of care if:</p>
+        <ul>
+          <li>Lactate ≥ 4 mmol/L despite treatment</li>
+          <li>Vasopressor requirement initiated</li>
+          <li>Respiratory failure (SpO₂ &lt; 88% on high-flow O₂)</li>
+          <li>Altered mental status (new confusion/agitation)</li>
+          <li>Oliguria &lt; 0.3 mL/kg/hr refractory to fluids</li>
+          <li>Two or more qSOFA criteria met and worsening</li>
+        </ul>
+      </div>
+    </div>
+  `;
+}
+
+function renderCondLabs(p) {
+  const el = document.getElementById('condLabsContent');
+  if (!el) return;
+  const labs = p.labs || {};
+  const v = p.vitals || {};
+
+  function labRow(name, val, unit, normal, interp) {
+    if (val == null || isNaN(val)) return `<div style="display:flex; gap:0.5rem; padding:0.4rem; border-bottom:1px dashed rgba(255,255,255,0.04);">
+      <span style="min-width:100px; font-size:0.72rem; color:var(--dim);">${name}</span>
+      <span style="font-family:'JetBrains Mono'; font-size:0.72rem; color:var(--dim);">N/A</span>
+    </div>`;
+    const inRange = (typeof normal === 'function') ? normal(val) : (val >= normal[0] && val <= normal[1]);
+    const color = inRange ? 'var(--green)' : (Math.abs(val - (Array.isArray(normal)?((normal[0]+normal[1])/2):0)) > 1.5*Math.abs((Array.isArray(normal)?((normal[1]-normal[0])/2):1)) ? 'var(--red)' : 'var(--yellow)');
+    return `<div style="display:flex; gap:0.5rem; align-items:center; padding:0.4rem; border-bottom:1px dashed rgba(255,255,255,0.04);">
+      <span style="min-width:100px; font-size:0.72rem; color:var(--dim);">${name}</span>
+      <span style="font-family:'JetBrains Mono'; font-size:0.82rem; font-weight:700; color:${color}; min-width:80px;">${typeof val === 'number' ? val.toFixed(2) : val} ${unit}</span>
+      <span style="font-size:0.68rem; color:${inRange?'var(--dim)':color}; flex:1;">${inRange ? '✔ Normal' : '⚠️ ' + interp}</span>
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="cond-grid">
+      <div class="cond-block">
+        <h4>🩸 Laboratory Values</h4>
+        ${labRow('Lactate', labs.Lactate, 'mmol/L', [0, 2.0], labs.Lactate > 4 ? 'CRITICAL — Tissue hypoperfusion' : 'Elevated — Assess perfusion')}
+        ${labRow('Creatinine', labs.Creatinine, 'mg/dL', [0.6, 1.2], 'Acute kidney injury risk')}
+        ${labRow('WBC', labs.WBC, '×10³/µL', [4.5, 11.0], labs.WBC > 12 ? 'Leukocytosis — infection/inflammation' : 'Leukopenia — severe infection risk')}
+        ${labRow('pH', labs.pH, '', [7.35, 7.45], labs.pH < 7.35 ? 'Acidosis — poor prognosis indicator' : 'Alkalosis')}
+        ${labRow('Platelets', labs.Platelets, '×10³/µL', [150, 400], labs.Platelets < 100 ? 'Thrombocytopenia — DIC screen' : 'Falling — monitor for DIC')}
+      </div>
+      <div class="cond-block">
+        <h4>❤️ Hemodynamic Vitals</h4>
+        ${labRow('HR', v.HR, 'bpm', [60, 100], v.HR > 100 ? 'Tachycardia — compensatory response' : 'Bradycardia')}
+        ${labRow('MAP', v.MAP, 'mmHg', [65, 100], 'Hypotension — perfusion at risk')}
+        ${labRow('SBP', v.SBP, 'mmHg', [90, 140], 'Hypotension')}
+        ${labRow('SpO₂', v.O2Sat, '%', [94, 100], 'Hypoxemia — increase O₂')}
+        ${labRow('Resp Rate', v.Resp, '/min', [12, 20], v.Resp > 20 ? 'Tachypnea — respiratory stress' : 'Bradypnea')}
+        ${labRow('Temp', v.Temp, '°C', [36.1, 38.3], v.Temp > 38.3 ? 'Fever — infectious etiology' : 'Hypothermia — severe infection')}
+      </div>
+    </div>
+    <div class="cond-block" style="margin-top:0.85rem;">
+      <h4>📖 Clinical Interpretation Guide</h4>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.6rem; margin-top:0.4rem;">
+        <div style="text-align:center; padding:0.4rem; background:rgba(34,197,94,0.08); border-radius:6px; border:1px solid rgba(34,197,94,0.2);">
+          <div style="color:var(--green); font-weight:700; font-size:0.75rem;">✔ Normal Range</div>
+          <div style="font-size:0.65rem; color:var(--dim); margin-top:0.2rem;">Value within expected parameters</div>
+        </div>
+        <div style="text-align:center; padding:0.4rem; background:rgba(234,179,8,0.08); border-radius:6px; border:1px solid rgba(234,179,8,0.2);">
+          <div style="color:var(--yellow); font-weight:700; font-size:0.75rem;">⚠️ Borderline</div>
+          <div style="font-size:0.65rem; color:var(--dim); margin-top:0.2rem;">Mildly abnormal — monitor closely</div>
+        </div>
+        <div style="text-align:center; padding:0.4rem; background:rgba(239,68,68,0.08); border-radius:6px; border:1px solid rgba(239,68,68,0.2);">
+          <div style="color:var(--red); font-weight:700; font-size:0.75rem;">🚨 Critical</div>
+          <div style="font-size:0.65rem; color:var(--dim); margin-top:0.2rem;">Significantly abnormal — urgent action</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AI MEDICAL CHATBOT
+// ═══════════════════════════════════════════════════════════════
+let _chatOpen = false;
+let _chatHistory = [];
+let _chatFirstOpen = true;
+
+const CHAT_KNOWLEDGE = {
+  treat_patient: [
+    'how to treat', 'how to yreat', 'treat that patient', 'yreat that patient',
+    'treat this patient', 'treat patient', 'how to treat patient', 'how do i treat',
+    'how should i treat', 'treatment', 'treat', 'therapy', 'management plan',
+    'protocol for patient', 'treatment plan', 'what should i do', 'treatment protocol',
+    'how to manage', 'how do we treat', 'treat critical', 'critical patient treatment'
+  ],
+  explain_condition: [
+    'condition', 'explain condition', 'patient condition', 'what is the condition',
+    'explain the condition', 'how is the patient', 'patient status', 'clinical status',
+    'what is wrong', 'pathophysiology', 'diagnosis', 'overview of patient',
+    'status of patient', 'explain status'
+  ],
+  greetings: ['hello','hi','hey','good morning','good evening'],
+  sepsis_definition: [
+    'what is sepsis','define sepsis','sepsis definition','explain sepsis',
+    'what causes sepsis','how does sepsis develop'
+  ],
+  sofa: ['sofa score','sofa','sequential organ','organ failure assessment'],
+  qsofa: ['qsofa','quick sofa','quick sequential'],
+  news: ['news2','news score','national early warning'],
+  lactate: ['lactate','lactic acid','lactate level','high lactate'],
+  bundle: ['hour-1 bundle','1 hour bundle','first hour bundle','surviving sepsis bundle','ssc bundle','hour 1'],
+  vasopressors: ['vasopressor','norepinephrine','vasopressin','dopamine','phenylephrine','pressors','noradrenaline'],
+  antibiotics: ['antibiotics','antibiotic','antimicrobial','pip-tazo','vancomycin','empiric'],
+  fluids: ['fluid','fluids','crystalloid','normal saline','lactated ringer','resuscitation','bolus'],
+  critical: ['critical patient','critical treatment','treat critical','critical care','icu treatment'],
+  oxygen: ['oxygen','o2','spo2','hypoxemia','ventilation','intubation','airway'],
+  fever: ['fever','temperature','hyperthermia','febrile','hypothermia'],
+  map: ['mean arterial pressure','map','blood pressure','hypotension'],
+  hr: ['heart rate','tachycardia','bradycardia','hr','pulse'],
+  risk_levels: ['risk level','risk score','high risk','low risk','moderate risk','critical risk','what does risk mean'],
+  septic_shock: ['septic shock','shock','hemodynamic instability'],
+  procalcitonin: ['procalcitonin','pct','biomarker'],
+  steroids: ['hydrocortisone','steroid','corticosteroid'],
+};
+
+const CHAT_RESPONSES = {
+  treat_patient: (p) => {
+    if (!p) {
+      const pid = document.getElementById('condPatientSel')?.value;
+      p = pid ? _condPatientsCache[pid] : null;
+    }
+    if (!p) {
+      const pids = Object.keys(_condPatientsCache);
+      if (pids.length > 0) {
+        const order = {CRITICAL:0, HIGH:1, MODERATE:2, LOW:3};
+        p = Object.values(_condPatientsCache).sort((a,b)=>(order[a.risk_level]||3)-(order[b.risk_level]||3))[0];
+      }
+    }
+    if (!p) {
+      return `⚠️ **No patient telemetry currently selected.**
+Please select a patient from the ward grid or dropdown to view their individualized treatment protocol.`;
+    }
+
+    const lvl = p.risk_level || 'LOW';
+    const v = p.vitals || {};
+    const labs = p.labs || {};
+    const scorePct = ((p.risk_score || 0) * 100).toFixed(1);
+    const emojiMap = {LOW:'🟢', MODERATE:'🟡', HIGH:'🟠', CRITICAL:'🚨'};
+    const badgeColor = {LOW:'#22c55e', MODERATE:'#eab308', HIGH:'#f97316', CRITICAL:'#ef4444'};
+
+    let out = `🩺 **Treatment Protocol for ${p.name} (${p.bed})**
+**Status:** ${emojiMap[lvl] || '⚪'} <span style="color:${badgeColor[lvl]||'white'}; font-weight:700;">${lvl} RISK (${scorePct}%)</span> | ICU: ${(p.icu_hours||0).toFixed(1)}h
+
+**Surviving Sepsis Campaign (SSC 2021) Guidelines:**\n`;
+
+    if (lvl === 'CRITICAL') {
+      out += `
+🆘 **IMMEDIATE RESUSCITATION (CODE SEPSIS):**
+1. **Fluid Resuscitation:** Start **30 mL/kg IV crystalloid** (Normal Saline or Lactated Ringer's) immediately.${labs.Lactate > 4 ? ` ⚠️ Lactate ${labs.Lactate?.toFixed(1)} mmol/L — Septic shock confirmed.` : ''}
+2. **Vasopressors:** Initiate **Norepinephrine 0.05-0.5 mcg/kg/min** via central line. Target **MAP ≥ 65 mmHg** (Current: ${v.MAP?.toFixed(0)||'—'} mmHg).
+3. **Broad-Spectrum Antibiotics:** Deliver within **1 hour** (Piperacillin-Tazobactam 4.5g IV + Vancomycin).
+4. **Blood Cultures:** Draw 2 sets prior to antibiotics.
+5. **Respiratory:** Maintain SpO₂ ≥ 94%. ${v.O2Sat < 90 ? '⚠️ High risk of acute respiratory decompensation — prepare for emergent intubation.' : 'Provide high-flow oxygen.'}
+6. **Stat Labs:** Serial lactate q2h, arterial blood gas, DIC screen (PT/INR, aPTT), CMP.`;
+    } else if (lvl === 'HIGH') {
+      out += `
+⚠️ **URGENT INTERVENTION (Within 1 Hour):**
+1. **Hour-1 Bundle:** Activate institutional sepsis bundle. Notify ICU attending physician.
+2. **Fluid Challenge:** Start crystalloid infusion (500-1000 mL bolus, up to 30 mL/kg if MAP < 65 or lactate ≥ 4).
+3. **Antibiotic Coverage:** Administer broad-spectrum IV antibiotics within 1 hour after blood cultures drawn.
+4. **Diagnostic Workup:** STAT blood cultures x2, repeat lactate within 2 hours, continuous telemetry.
+5. **Hemodynamic Monitoring:** If MAP remains < 65 mmHg despite fluids, prepare Norepinephrine infusion.`;
+    } else if (lvl === 'MODERATE') {
+      out += `
+🟡 **VIGILANT MONITORING & EARLY MANAGEMENT:**
+1. **Escalate Monitoring:** Vital signs every 1 hour, continuous SpO₂ and ECG.
+2. **Hydration:** Evaluate volume status. Ensure IV access; maintain hydration (target urine output > 0.5 mL/kg/h).
+3. **Infection Source Workup:** Sepsis lab panel (CBC with diff, CMP, lactate, procalcitonin, urinalysis, blood cultures).
+4. **Antibiotics:** Review current antimicrobials; consider broadening if infection confirmed.`;
+    } else {
+      out += `
+🟢 **ROUTINE WARD MONITORING:**
+1. **Vital Signs:** Standard ICU vitals every 4 hours.
+2. **Supportive Care:** Maintain normovolemia, routine enteral/IV hydration.
+3. **Surveillance:** Continue AI temporal monitoring for any early risk elevation.`;
+    }
+
+    out += `\n\n👉 *You can also click the **Treatment Protocol** tab in the Patient Condition section on the dashboard for the interactive checklist!*`;
+    return out;
+  },
+
+  explain_condition: (p) => {
+    if (!p) {
+      const pid = document.getElementById('condPatientSel')?.value;
+      p = pid ? _condPatientsCache[pid] : null;
+    }
+    if (!p) {
+      const pids = Object.keys(_condPatientsCache);
+      if (pids.length > 0) {
+        const order = {CRITICAL:0, HIGH:1, MODERATE:2, LOW:3};
+        p = Object.values(_condPatientsCache).sort((a,b)=>(order[a.risk_level]||3)-(order[b.risk_level]||3))[0];
+      }
+    }
+    if (!p) {
+      return `⚠️ **No patient selected.** Select a patient to view condition analysis.`;
+    }
+
+    const lvl = p.risk_level || 'LOW';
+    const v = p.vitals || {};
+    const cs = p.clinical_scores || {};
+    const scorePct = ((p.risk_score || 0) * 100).toFixed(1);
+
+    const abnormals = [];
+    if (v.HR && (v.HR < 60 || v.HR > 100)) abnormals.push(`• **Heart Rate:** ${v.HR?.toFixed(0)} bpm (${v.HR > 100 ? 'Tachycardia' : 'Bradycardia'})`);
+    if (v.MAP && v.MAP < 65) abnormals.push(`• **MAP:** ${v.MAP?.toFixed(0)} mmHg (Hypoperfusion / Hypotension)`);
+    if (v.Temp && (v.Temp < 36 || v.Temp > 38.3)) abnormals.push(`• **Temperature:** ${v.Temp?.toFixed(1)}°C (${v.Temp > 38.3 ? 'Fever' : 'Hypothermia'})`);
+    if (v.Resp && (v.Resp < 12 || v.Resp > 20)) abnormals.push(`• **Respiratory Rate:** ${v.Resp?.toFixed(0)} /min (${v.Resp > 20 ? 'Tachypnea' : 'Bradypnea'})`);
+    if (v.O2Sat && v.O2Sat < 94) abnormals.push(`• **SpO₂:** ${v.O2Sat?.toFixed(0)}% (Hypoxemia)`);
+
+    return `📋 **Patient Condition Analysis: ${p.name} (${p.bed})**
+
+• **Risk Classification:** **${lvl} RISK (${scorePct}%)**
+• **Clinical Trajectory:** *${p.trajectory || 'stable'}*
+• **Clinical Scores:** qSOFA: **${cs.qsofa ?? '—'}/3** | NEWS2: **${cs.news2 ?? '—'}/20** | Partial SOFA: **${cs.sofa ?? '—'}/8**
+
+**Clinical Summary:**
+${p.interpretation || 'Patient is being monitored via real-time BiLSTM neural temporal modeling.'}
+
+${abnormals.length ? `**⚠️ Key Physiological Derangements:**\n${abnormals.join('\n')}` : '✅ All primary vital signs are currently within safe physiologic ranges.'}
+
+👉 *Switch to the **Condition Overview** tab on the dashboard for detailed pathophysiology and lab breakdown.*`;
+  },
+  greetings: () => `👋 **Hello! I'm the SepsisPredictAI Clinical Assistant.**
+
+I can help you understand:
+<span class="tag">Sepsis</span><span class="tag">Treatment Protocols</span><span class="tag">Lab Values</span><span class="tag">Clinical Scores</span><span class="tag">Risk Interpretation</span>
+
+What would you like to know about this patient or sepsis management?`,
+
+  sepsis_definition: () => `🧬 **What is Sepsis?**
+
+Sepsis is a **life-threatening medical emergency** caused by the body's extreme response to an infection. Instead of just fighting the infection, the immune system begins attacking its own tissues and organs.
+
+**Key Diagnostic Criteria (Sepsis-3):**
+• Suspected or confirmed infection
+• Acute increase in SOFA score ≥ 2 points
+• Life-threatening organ dysfunction
+
+**Septic Shock** = Sepsis + vasopressor requirement + lactate > 2 mmol/L
+
+⏰ **Golden Hour Rule:** Early recognition and treatment dramatically improves survival. Every hour of delay increases mortality by ~7%.`,
+
+  sofa: () => `📊 **SOFA Score (Sequential Organ Failure Assessment)**
+
+Measures **multi-organ dysfunction** severity across 6 systems:
+
+| System | Parameters | Score 0-4 |
+|---|---|---|
+| **Respiratory** | PaO₂/FiO₂ | < 400 → dysfunction |
+| **Coagulation** | Platelets | < 150 → risk |
+| **Liver** | Bilirubin | > 1.2 → elevated |
+| **Cardiovascular** | MAP/vasopressors | MAP < 70 |
+| **CNS** | GCS | < 15 → altered |
+| **Renal** | Creatinine/UO | > 1.2 mg/dL |
+
+**Score Interpretation:**
+• 0-1: Low mortality (~1%)
+• 2-3: Moderate (~7%)
+• 4-5: High (~20%)
+• ≥ 6: Very high (>40%)`,
+
+  qsofa: () => `🔍 **qSOFA — Quick SOFA (Bedside Screening)**
+
+A rapid sepsis screening tool using only **3 parameters:**
+
+✅ **Criteria (1 point each):**
+• Altered mental status (GCS < 15)
+• Respiratory rate ≥ 22 /min
+• Systolic BP ≤ 100 mmHg
+
+**Score ≥ 2 = Likely sepsis → Full assessment needed**
+
+💡 *qSOFA is a screening tool, not a diagnostic criterion. Use SOFA for definitive sepsis identification.*`,
+
+  news: () => `📡 **NEWS2 Score (National Early Warning Score 2)**
+
+Assesses **physiological derangement** using 7 parameters:
+Respiratory Rate, SpO₂, Supplemental O₂, BP, HR, AVPU, Temperature
+
+**Risk Thresholds:**
+• **0-4:** Low — routine monitoring
+• **5-6:** Medium — urgent clinical review
+• **≥ 7:** HIGH — emergency assessment
+• **Single parameter score 3:** Urgent review
+
+🔵 *NEWS2 is particularly effective for identifying deteriorating patients before they become critically ill.*`,
+
+  lactate: (p) => {
+    const labs = (p && p.labs) || {};
+    const lacStr = labs.Lactate != null ? `Current level: **${labs.Lactate.toFixed(2)} mmol/L**` : '';
+    return `🩸 **Lactate (Serum Lactate) Interpretation**
+${lacStr}
+
+| Level | Value | Clinical Meaning |
+|---|---|---|
+| Normal | < 2.0 mmol/L | Adequate tissue perfusion |
+| Elevated | 2–4 mmol/L | ⚠️ Tissue hypoperfusion |
+| Critical | > 4.0 mmol/L | 🚨 Septic shock criteria |
+
+**Clinical Actions:**
+• Lactate 2-4: Aggressive resuscitation, identify source
+• Lactate > 4: **Septic shock protocol** — emergent vasopressors + fluid bolus
+• Trend: Repeat every 2h until normalizing (<2 mmol/L)
+
+🎯 *Lactate clearance ≥ 10% in 2h is a positive prognostic sign.*`;
+  },
+
+  bundle: () => `📋 **Surviving Sepsis Campaign: Hour-1 Bundle**
+
+Initiate ALL within **60 minutes** of sepsis recognition:
+
+**1️⃣ MEASURE** lactate level
+*(Repeat if initial lactate > 2 mmol/L)*
+
+**2️⃣ OBTAIN** blood cultures before antibiotics
+*(2 sets from different sites)*
+
+**3️⃣ ADMINISTER** broad-spectrum antibiotics
+*(Piperacillin-Tazobactam + Vancomycin, adjust per culture)*
+
+**4️⃣ START** IV crystalloids if MAP < 65 or lactate ≥ 4
+*(30 mL/kg IV crystalloid bolus)*
+
+**5️⃣ VASOPRESSORS** if MAP < 65 during/after fluids
+*(Norepinephrine first-line — target MAP ≥ 65 mmHg)*
+
+⏰ *Time to treatment is the most critical factor in sepsis survival.*`,
+
+  vasopressors: () => `💉 **Vasopressor Management in Sepsis**
+
+**First-Line:** Norepinephrine (Noradrenaline)
+• Start: 0.01-0.05 mcg/kg/min
+• Titrate to MAP ≥ 65 mmHg
+• Max: 0.5 mcg/kg/min
+
+**Second-Line (add to NE):** Vasopressin
+• Fixed dose: 0.03-0.04 U/min
+• Can reduce NE requirements
+
+**Adjunct:** Epinephrine
+• For refractory shock or cardiac output support
+
+**If Relative Adrenal Insufficiency:**
+• Add Hydrocortisone 200mg/day (50mg q6h)
+
+⚠️ *Always require central venous or intraosseous access. Monitor for digital ischemia.*`,
+
+  antibiotics: () => `🦠 **Empiric Antibiotic Selection in Sepsis**
+
+**Start within 1 hour of recognition. Culture first.**
+
+**Community-Acquired:**
+• Piperacillin-Tazobactam 4.5g IV q6-8h
+• + Vancomycin if MRSA risk
+
+**Hospital/Healthcare-Associated:**
+• Meropenem 1g IV q8h (broader gram-neg coverage)
+• + Vancomycin for MRSA
+
+**Immunocompromised:**
+• Meropenem + Voriconazole (antifungal)
+
+**De-escalation:** Narrow spectrum once cultures identified (48-72h)
+
+💡 *Procalcitonin-guided de-escalation reduces antibiotic duration and resistance.*`,
+
+  fluids: () => `💧 **Fluid Resuscitation in Sepsis**
+
+**Initial Bolus:** 30 mL/kg IV crystalloid
+• Administer over 30-60 minutes
+• Use balanced crystalloids (LR preferred over NS)
+
+**Fluid Responsiveness Assessment:**
+• Passive Leg Raise test (PLR)
+• Stroke volume variation (SVV) on ventilator
+• IVC collapsibility on ultrasound
+
+**Targets:**
+• MAP ≥ 65 mmHg
+• Urine output ≥ 0.5 mL/kg/hr
+• Lactate clearance ≥ 10% in 2 hours
+• ScvO₂ ≥ 70%
+
+⚠️ *Avoid excessive fluid administration — associated with pulmonary edema, abdominal compartment syndrome, and worse outcomes.*`,
+
+  critical: (p) => {
+    const lvl = p?.risk_level;
+    if (lvl === 'CRITICAL') {
+      return `🚨 **CRITICAL Patient — Emergency Protocol**
+
+This patient requires **IMMEDIATE intervention:**
+
+1. 🆘 **Call ICU attending STAT**
+2. 💉 **Start 30 mL/kg IV crystalloid NOW**
+3. 🦠 **Blood cultures → Broad antibiotics within 60 min**
+4. 💊 **Norepinephrine** if MAP < 65 after initial fluids
+5. 😮‍💨 **Airway assessment** — prepare for intubation
+6. 🩸 **Stat lactate, ABG, CBC, CMP**
+
+⏰ Every minute matters. Activate the institutional Code Sepsis protocol immediately.`;
+    }
+    return `🏥 **Critical Care Management**
+
+For critically ill patients, key priorities are:
+• Airway, Breathing, Circulation (ABC)
+• Early goal-directed therapy
+• Source control within 6-12 hours
+• Glucose control (target 140-180 mg/dL)
+• DVT prophylaxis
+• Stress ulcer prophylaxis
+• Early enteral nutrition (within 24-48h if stable)
+
+Would you like details on a specific aspect?`;
+  },
+
+  oxygen: () => `😮‍💨 **Oxygen & Respiratory Management**
+
+**Target SpO₂:** ≥ 94% (or 88-92% in COPD)
+
+**Escalation Ladder:**
+1. Nasal cannula 1-6 L/min (SpO₂ > 94%)
+2. Simple face mask 6-10 L/min
+3. Non-rebreather mask 10-15 L/min (SpO₂ < 92%)
+4. High-Flow Nasal Cannula (HFNC) up to 60 L/min
+5. Non-Invasive Ventilation (CPAP/BiPAP)
+6. **Intubation + Mechanical Ventilation** (SpO₂ < 88% refractory)
+
+**Lung-Protective Ventilation (post-intubation):**
+• Tidal volume 6 mL/kg ideal body weight
+• Plateau pressure < 30 cmH₂O
+• PEEP 5-15 cmH₂O`,
+
+  fever: () => `🌡️ **Fever & Temperature in Sepsis**
+
+| Temp | Status | Action |
+|---|---|---|
+| < 36.0°C | ⚠️ Hypothermia | Blankets, warming, ICU concern |
+| 36-38.3°C | ✅ Normal | Routine monitoring |
+| > 38.3°C | Fever | Culture, antipyretics |
+| > 40°C | 🚨 Hyperpyrexia | Active cooling, urgent workup |
+
+**Fever Management:**
+• Acetaminophen (Paracetamol) 500-1000mg q6h (avoid NSAIDs in sepsis)
+• Blood cultures before any antipyretics if new fever
+• Hypothermia in sepsis often indicates worse prognosis
+• External cooling for temp > 40°C`,
+
+  map: () => `📊 **Mean Arterial Pressure (MAP)**
+
+**Formula:** MAP = DBP + 1/3(SBP - DBP)
+
+**Clinical Targets:**
+| MAP | Status |
+|---|---|
+| < 65 mmHg | 🚨 Hypoperfusion → Start vasopressors |
+| 65-100 mmHg | ✅ Adequate perfusion target |
+| > 110 mmHg | Monitor — may increase afterload |
+
+**In Septic Shock:** Target MAP ≥ 65 mmHg with vasopressors
+**In Hypertensive patients:** Some need MAP ≥ 70-80 for organ perfusion
+
+💡 *MAP < 65 despite adequate fluids = vasopressor indication*`,
+
+  hr: () => `❤️ **Heart Rate in Sepsis**
+
+| HR | Status |
+|---|---|
+| < 50 bpm | Bradycardia — check drugs, electrolytes |
+| 60-100 bpm | ✅ Normal |
+| 100-130 bpm | Tachycardia — compensatory, treat cause |
+| > 130 bpm | ⚠️ Significant — assess fluid status |
+| > 150 bpm | 🚨 Critical — arrhythmia workup |
+
+**Tachycardia in Sepsis Causes:**
+• Fever, dehydration, pain, anxiety
+• Compensatory for low cardiac output
+• Anemia, hypoxemia
+
+*Treating the underlying cause is key — avoid rate control unless hemodynamically compromised.*`,
+
+  risk_levels: () => `🎯 **AI Risk Level Interpretation**
+
+| Level | Score | Clinical Action |
+|---|---|---|
+| 🟢 LOW | 0-0.35 | Routine monitoring |
+| 🟡 MODERATE | 0.35-0.6 | Escalate monitoring, early interventions |
+| 🟠 HIGH | 0.6-0.8 | Begin Hour-1 Bundle, urgent physician |
+| 🔴 CRITICAL | > 0.8 | EMERGENCY — Code Sepsis protocol |
+
+**How the AI score is calculated:**
+The BiLSTM model analyzes temporal patterns of 40+ vital signs and lab values over the ICU stay, identifying trajectories that precede sepsis onset up to **6 hours before clinical manifestation**.
+
+*SHAP values (shown on patient cards) explain which factors contributed most to the risk score.*`,
+
+  septic_shock: () => `⚡ **Septic Shock**
+
+**Definition (Sepsis-3):**
+Sepsis + vasopressor requirement + lactate > 2 mmol/L (despite adequate volume resuscitation)
+
+**Mortality:** 40-60% without rapid treatment
+
+**Immediate Management:**
+1. Fluid resuscitation 30 mL/kg immediately
+2. Norepinephrine if MAP < 65 despite fluids
+3. Broad-spectrum antibiotics within 1 hour
+4. ICU admission mandatory
+5. Consider early intubation for airway protection
+6. Monitor lactate clearance
+
+**Refractory Shock (despite NE):**
+• Add Vasopressin 0.03 U/min
+• Hydrocortisone 200mg/day
+• Consider Epinephrine or Phenylephrine
+• Extracorporeal support if cardiac failure component`,
+
+  procalcitonin: () => `🔬 **Procalcitonin (PCT)**
+
+A **biomarker of bacterial infection** and sepsis severity:
+
+| PCT | Interpretation |
+|---|---|
+| < 0.1 ng/mL | Bacterial sepsis very unlikely |
+| 0.1-0.25 ng/mL | Uncertain — local infection possible |
+| 0.25-0.5 ng/mL | ⚠️ Systemic bacterial infection likely |
+| > 0.5 ng/mL | 🚨 Sepsis — start empiric antibiotics |
+| > 10 ng/mL | Severe sepsis/septic shock |
+
+**PCT-Guided Antibiotic De-escalation:**
+• PCT declining >80% from peak → consider stopping antibiotics
+• Reduces duration of antibiotic therapy and resistance
+
+*PCT rises 4-12 hours after infection onset, peaks at 24-48h.*`,
+
+  steroids: () => `💊 **Corticosteroids in Sepsis**
+
+**Indication:** Vasopressor-dependent septic shock (not responding to fluids + vasopressors)
+
+**Regimen:**
+• Hydrocortisone 200mg/day
+  - Option A: 50mg IV q6h
+  - Option B: 200mg continuous infusion/24h
+
+**Evidence (ADRENAL, APROCCHSS trials):**
+• Faster shock reversal and vasopressor weaning
+• No clear mortality benefit in all patients
+• Reduce duration of ICU stay
+
+**Taper when:** Vasopressors are weaned
+**Duration:** Typically 5-7 days, then taper
+
+⚠️ *Avoid in sepsis without shock — may increase complications*`,
+
+  default: (q) => `🤔 I don't have a specific response for **"${q}"**, but I can help with:
+
+<span class="tag">What is sepsis</span><span class="tag">SOFA score</span><span class="tag">qSOFA</span><span class="tag">Hour-1 Bundle</span><span class="tag">Vasopressors</span><span class="tag">Antibiotics</span><span class="tag">Lactate</span><span class="tag">Fluid resuscitation</span><span class="tag">Risk levels</span><span class="tag">Septic shock</span>
+
+Try asking one of these topics, or rephrase your question.`
+};
+
+function matchChatIntent(msg) {
+  const m = msg.toLowerCase().trim();
+  if (CHAT_KNOWLEDGE.treat_patient && CHAT_KNOWLEDGE.treat_patient.some(k => m.includes(k))) return 'treat_patient';
+  if (CHAT_KNOWLEDGE.explain_condition && CHAT_KNOWLEDGE.explain_condition.some(k => m.includes(k))) return 'explain_condition';
+  for (const [intent, keywords] of Object.entries(CHAT_KNOWLEDGE)) {
+    if (keywords.some(k => m.includes(k))) return intent;
+  }
+  return null;
+}
+
+function toggleChatbot() {
+  _chatOpen = !_chatOpen;
+  const win = document.getElementById('chatbotWindow');
+  win.classList.toggle('open', _chatOpen);
+  document.getElementById('chatFabBadge').style.display = 'none';
+  if (_chatOpen && _chatFirstOpen) {
+    _chatFirstOpen = false;
+    appendBotMessage(CHAT_RESPONSES.greetings());
+  }
+  if (_chatOpen) {
+    setTimeout(() => document.getElementById('chatInput')?.focus(), 200);
+  }
+}
+
+function appendBotMessage(html, isTyping = false) {
+  const container = document.getElementById('chatMessages');
+  if (!container) return;
+
+  if (isTyping) {
+    const typingEl = document.createElement('div');
+    typingEl.className = 'chat-msg bot';
+    typingEl.id = 'chatTyping';
+    typingEl.innerHTML = `<div class="chat-msg-avatar">🏥</div><div class="chat-typing"><span></span><span></span><span></span></div>`;
+    container.appendChild(typingEl);
+    container.scrollTop = container.scrollHeight;
+    return;
+  }
+
+  const el = document.createElement('div');
+  el.className = 'chat-msg bot';
+  el.innerHTML = `<div class="chat-msg-avatar">🏥</div><div class="chat-msg-bubble">${html}</div>`;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+function appendUserMessage(text) {
+  const container = document.getElementById('chatMessages');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'chat-msg user';
+  el.innerHTML = `<div class="chat-msg-bubble">${text}</div><div class="chat-msg-avatar">👤</div>`;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const msg = input?.value?.trim();
+  if (!msg) return;
+  input.value = '';
+  sendQuick(msg);
+}
+
+function sendQuick(msg) {
+  if (!_chatOpen) toggleChatbot();
+  appendUserMessage(msg);
+  appendBotMessage(null, true); // show typing
+
+  const delay = 500 + Math.random() * 400;
+  setTimeout(() => {
+    const typing = document.getElementById('chatTyping');
+    if (typing) typing.remove();
+
+    const intent = matchChatIntent(msg);
+    // Get current selected patient context
+    const pid = document.getElementById('condPatientSel')?.value;
+    const patient = pid ? _condPatientsCache[pid] : null;
+
+    let response;
+    if (intent && CHAT_RESPONSES[intent]) {
+      const fn = CHAT_RESPONSES[intent];
+      response = typeof fn === 'function' ? fn(patient) : fn;
+    } else {
+      response = CHAT_RESPONSES.default(msg);
+    }
+    appendBotMessage(response);
+  }, delay);
+}
+
+// ── Application Boot ──────────────────────────────────────────
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApplicationMode);
+} else {
+  initApplicationMode();
+}
+</script>
+</body>
+</html>

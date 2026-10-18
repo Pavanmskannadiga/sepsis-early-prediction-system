@@ -1,0 +1,46 @@
+# ============================================================
+# Docker Ignore — Sepsis Early Prediction System
+# Keep the image lean by excluding dev/test artifacts
+# ============================================================
+
+# Virtual environment (rebuilt inside container)
+.venv/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Pytest caches
+.pytest_cache/
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Environment secrets (injected at runtime via docker-compose)
+.env
+.env.*
+!.env.example
+
+# OS-specific files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Documentation (not needed at runtime)
+*.md
+!README.md
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Large raw training data (not needed at inference time)
+data/raw/

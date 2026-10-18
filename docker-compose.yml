@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  sepsis-early-prediction:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sepsis-prediction-system:latest
+    container_name: sepsis_prediction_app
+    ports:
+      - "8000:8000"
+    environment:
+      - SEPSIS_API_KEY=${SEPSIS_API_KEY:-sepsis_dev_secret_key_123}
+      - EHR_WRITEBACK_URL=${EHR_WRITEBACK_URL:-http://localhost:8000/api/mock-ehr/writeback}
+    volumes:
+      # Persist HIPAA audit logs and trained models on the host machine filesystem
+      - ./results:/app/results
+    restart: unless-stopped
