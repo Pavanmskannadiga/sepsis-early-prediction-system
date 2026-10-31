@@ -241,7 +241,10 @@ async def startup_event():
 
 @app.get("/", include_in_schema=False)
 async def root():
-    return FileResponse(str(DASHBOARD_DIR / "index.html"))
+    return FileResponse(
+        str(DASHBOARD_DIR / "live.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+    )
 
 @app.get("/index.html", include_in_schema=False)
 async def index_html():
@@ -249,7 +252,10 @@ async def index_html():
 
 @app.get("/live.html", include_in_schema=False)
 async def live_dashboard():
-    return FileResponse(str(DASHBOARD_DIR / "live.html"))
+    return FileResponse(
+        str(DASHBOARD_DIR / "live.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+    )
 
 @app.get("/offline_engine.js", include_in_schema=False)
 async def offline_engine_js():
