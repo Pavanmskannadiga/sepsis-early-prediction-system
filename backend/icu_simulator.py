@@ -319,3 +319,44 @@ class ICUWard:
 
     def all_summaries(self) -> List[Dict]:
         return [p.to_summary() for p in self.patients.values()]
+
+    def discharge_and_admit_new(self, pid: str) -> Optional[SimulatedPatient]:
+        """Discharge patient pid and admit a new patient in the same bed."""
+        if pid not in self.patients:
+            return None
+        old_patient = self.patients[pid]
+        bed = old_patient.bed
+
+        # Determine next ID
+        existing_nums = [
+            int(p[1:]) for p in self.patients.keys()
+            if p.startswith("P") and p[1:].isdigit()
+        ]
+        next_num = (max(existing_nums) + 1) if existing_nums else random.randint(2000, 9999)
+        new_pid = f"P{next_num}"
+
+        # Choose a name not currently active in ward
+        active_names = {p.name for p in self.patients.values()}
+        available = [f"{fn} {ln}" for fn, ln in PATIENT_NAMES if f"{fn} {ln}" not in active_names]
+        name = random.choice(available) if available else f"{random.choice(PATIENT_NAMES)[0]} {random.choice(PATIENT_NAMES)[1]}"
+
+        trajectories = ["stable", "deteriorating", "septic", "recovering", "stable"]
+        traj = random.choice(trajectories)
+
+        new_patient = SimulatedPatient(
+            patient_id=new_pid,
+            name=name,
+            age=random.randint(38, 82),
+            gender=random.choice(["M", "F"]),
+            bed=bed,
+            trajectory=traj,
+        )
+        # Pre-warm simulation so new patient has baseline telemetry
+        pre_hours = random.randint(3, 8)
+        for _ in range(pre_hours):
+            new_patient.next_reading()
+
+        # Remove old patient and assign new patient
+        del self.patients[pid]
+        self.patients[new_pid] = new_patient
+        return new_patient

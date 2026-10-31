@@ -220,6 +220,47 @@ class StandaloneICUEngine {
     ];
   }
 
+  dischargePatient(pid) {
+    const idx = this.patients.findIndex(p => p.patient_id === pid);
+    if (idx === -1) return null;
+    const old = this.patients[idx];
+    const bed = old.bed;
+
+    const names = [
+      'David Chen', 'Elena Rostova', 'Kavita Deshmukh', 'Marcus Brody',
+      'Fatima Zahra', 'Rajesh Pillai', 'Grace O\'Connor', 'Vikram Malhotra',
+      'Aisha Al-Mansoor', 'Lucas Silva', 'Deepa Iyer', 'Samuel Okoye'
+    ];
+    const activeNames = new Set(this.patients.map(p => p.name));
+    const avail = names.filter(n => !activeNames.has(n));
+    const newName = avail.length ? avail[Math.floor(Math.random() * avail.length)] : 'New Patient';
+
+    const existingNums = this.patients.map(p => parseInt(p.patient_id.replace(/\D/g, '')) || 0);
+    const nextNum = Math.max(...existingNums, 100) + 1;
+    const newPid = 'P' + nextNum;
+
+    const newP = {
+      patient_id: newPid,
+      bed: bed,
+      name: newName,
+      age: Math.floor(40 + Math.random() * 40),
+      gender: Math.random() > 0.5 ? 'M' : 'F',
+      trajectory: 'stable',
+      admission_time: new Date().toISOString(),
+      admission_dx: 'Post-Op Observation (Routine)',
+      comorbidities: ['Hypertension (Controlled)'],
+      vitals: { HR: 72 + Math.floor(Math.random() * 10), O2Sat: 98, Temp: 36.8, SBP: 120, MAP: 82, DBP: 70, Resp: 15 },
+      labs: { Lactate: 1.0, WBC: 7.2, Platelets: 230, Creatinine: 0.85, PaO2_FiO2: 450, Bilirubin: 0.5, BUN: 13, Glucose: 100 },
+      risk_score: 0.08,
+      risk_level: 'LOW',
+      history: Array.from({ length: 24 }, () => 0.06 + Math.random() * 0.04),
+      predictions: [0.08, 0.07, 0.07, 0.06, 0.06, 0.06]
+    };
+
+    this.patients[idx] = newP;
+    return this.getPatientSummary(newPid);
+  }
+
   // ── Step Forward in Time ──────────────────────────────────
   step() {
     this.tick += 1;

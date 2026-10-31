@@ -197,12 +197,44 @@ canvas.sparkline{width:100%;height:36px;display:block;border-radius:4px}
 /* ── Card footer ──────────────────────────────────────────────── */
 .card-footer{
   padding:.45rem 1rem;border-top:1px solid var(--border);
-  display:flex;align-items:center;justify-content:space-between;
+  display:flex;align-items:center;justify-content:space-between;gap:0.4rem;
 }
 .card-footer-text{font-size:.65rem;color:var(--dim)}
 .card-footer-traj{font-size:.65rem;font-weight:600}
 .traj-stable{color:var(--green)}.traj-deteriorating{color:var(--yellow)}
 .traj-septic{color:var(--red)}.traj-recovering{color:var(--cyan)}
+.discharge-btn {
+  background: rgba(34,197,94,0.12);
+  border: 1px solid rgba(34,197,94,0.35);
+  color: #86efac;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.22rem 0.55rem;
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.discharge-btn:hover {
+  background: rgba(34,197,94,0.25);
+  border-color: rgba(34,197,94,0.6);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.discharge-btn.ready-discharge {
+  background: rgba(16,185,129,0.22);
+  border-color: rgba(16,185,129,0.55);
+  color: #6ee7b7;
+  box-shadow: 0 0 10px rgba(16,185,129,0.2);
+}
+.discharge-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
 /* ── Interp toast at bottom of card ──────────────────────────── */
 .card-interp{
   padding:.5rem 1rem;font-size:.7rem;color:var(--dim);line-height:1.4;
@@ -1166,6 +1198,10 @@ function connect() {
         const data = JSON.parse(evt.data);
         if (data.type === 'init' || data.type === 'ward_update') {
           handleWardUpdate(data);
+        } else if (data.type === 'patient_discharged') {
+          if (typeof handleDischargeNotification === 'function') {
+            handleDischargeNotification(data);
+          }
         }
       } catch(e) {
         console.error('WS parse error:', e);
@@ -1387,6 +1423,7 @@ function createCard(p) {
     <div class="card-footer">
       <span class="card-footer-text" id="icu-${p.patient_id}">ICU: ${p.icu_hours?.toFixed(1)}h</span>
       <span class="card-footer-traj traj-${p.trajectory}" id="traj-${p.patient_id}">${p.trajectory}</span>
+      <button class="discharge-btn" id="disch-${p.patient_id}" onclick="dischargePatient('${p.patient_id}', event)" title="Discharge patient and admit new patient">🏥 Discharge</button>
     </div>
   `;
   return card;
@@ -1472,6 +1509,23 @@ function updateCard(card, p) {
   // Footer
   const icuEl = document.getElementById(`icu-${p.patient_id}`);
   if (icuEl) icuEl.textContent = `ICU: ${(p.icu_hours||0).toFixed(1)}h`;
+  const trajEl = document.getElementById(`traj-${p.patient_id}`);
+  if (trajEl) {
+    trajEl.textContent = p.trajectory || 'stable';
+    trajEl.className = `card-footer-traj traj-${p.trajectory || 'stable'}`;
+  }
+  const dischBtn = document.getElementById(`disch-${p.patient_id}`);
+  if (dischBtn) {
+    if (level === 'LOW') {
+      dischBtn.className = 'discharge-btn ready-discharge';
+      dischBtn.innerHTML = '🏥 Discharge (Ready)';
+      dischBtn.title = 'Non-septic / Low risk — ready for safe ICU discharge. Frees bed and admits next patient.';
+    } else {
+      dischBtn.className = 'discharge-btn';
+      dischBtn.innerHTML = '🏥 Discharge';
+      dischBtn.title = `Current risk is ${level}. Click to discharge and admit new patient.`;
+    }
+  }
 }
 
 // ── Mini Gauge ──────────────────────────────────────────────
@@ -1659,6 +1713,7 @@ function renderModal(p) {
       <button class="btn-cdss purple" onclick="openWhatIfModal('${p.patient_id}')">🎯 What-If Studio</button>
       <button class="btn-cdss cyan" onclick="openSscModal('${p.patient_id}')">📋 Surviving Sepsis Bundle</button>
       <button class="btn-cdss green" onclick="openFhirModal('${p.patient_id}')">🌐 FHIR R4 Export</button>
+      <button class="btn-cdss green" style="background:rgba(16,185,129,0.2);border-color:#10b981;color:#6ee7b7;" onclick="dischargePatient('${p.patient_id}', event); closeModal();">🏥 Discharge Patient</button>
     </div>
 
     <div style="font-size:.72rem;color:var(--dim);text-align:right;margin-top:0.4rem;">
@@ -1670,6 +1725,104 @@ function renderModal(p) {
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('open');
   _modalPid = null;
+}
+
+// ── 🏥 Patient Discharge & Bed Reassignment Logic ─────────────
+function showToast(msg) {
+  const banner = document.getElementById('alertBanner');
+  const alertText = document.getElementById('alertText');
+  if (banner && alertText) {
+    alertText.textContent = msg;
+    banner.classList.add('visible');
+    setTimeout(() => {
+      if (alertText.textContent === msg) {
+        banner.classList.remove('visible');
+      }
+    }, 7000);
+  }
+}
+
+function handleDischargeNotification(data) {
+  const { discharged_patient_id, new_patient, message } = data;
+  if (message) {
+    showToast(`🏥 ${message}`);
+  }
+  if (discharged_patient_id && new_patient) {
+    delete riskHistory[discharged_patient_id];
+    const oldCard = document.getElementById(`card-${discharged_patient_id}`);
+    if (oldCard) {
+      const newCard = createCard(new_patient);
+      oldCard.parentNode.replaceChild(newCard, oldCard);
+      updateCard(newCard, new_patient);
+    }
+    if (typeof _condPatientsCache !== 'undefined' && _condPatientsCache) {
+      delete _condPatientsCache[discharged_patient_id];
+      _condPatientsCache[new_patient.patient_id] = new_patient;
+      if (_selectedPid === discharged_patient_id) {
+        selectPatientForCondition(new_patient.patient_id);
+      }
+      if (typeof populateCondPatientSelector === 'function') {
+        populateCondPatientSelector(Object.values(_condPatientsCache));
+      }
+    }
+  }
+}
+
+async function dischargePatient(pid, evt) {
+  if (evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+  }
+
+  const card = document.getElementById(`card-${pid}`);
+  const patientName = card ? card.querySelector('.card-name')?.textContent || pid : pid;
+  const pill = document.getElementById(`pill-${pid}`);
+  const isHighRisk = pill && (pill.textContent.includes('HIGH') || pill.textContent.includes('CRITICAL'));
+
+  const confirmMsg = isHighRisk
+    ? `⚠️ CAUTION: Patient ${patientName} (${pid}) has elevated sepsis risk!\n\nAre you sure you want to discharge them from the ICU?`
+    : `🏥 Discharge Patient ${patientName} (${pid})?\n\nThis patient is non-septic / recovered. Discharging will safely free their bed and admit a new incoming ICU patient.`;
+
+  if (!confirm(confirmMsg)) return;
+
+  const btn = document.getElementById(`disch-${pid}`);
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Discharging...';
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/patients/${pid}/discharge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: isHighRisk ? 'manual_override' : 'non_septic', notes: 'Discharged by clinician' })
+    });
+
+    if (!res.ok) {
+      throw new Error(`Server returned HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    handleDischargeNotification(data);
+  } catch (err) {
+    console.warn('Remote discharge call failed, checking offline engine fallback:', err);
+    if (window.standaloneICUEngine && typeof window.standaloneICUEngine.dischargePatient === 'function') {
+      const newP = window.standaloneICUEngine.dischargePatient(pid);
+      if (newP) {
+        handleDischargeNotification({
+          discharged_patient_id: pid,
+          new_patient: newP,
+          message: `Patient ${patientName} (${pid}) discharged. Bed reassigned to newly admitted patient ${newP.name} (${newP.patient_id}).`
+        });
+        return;
+      }
+    }
+    showToast(`Discharge note: ${err.message}`);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🏥 Discharge';
+    }
+  }
 }
 
 // Model is fixed to BiLSTM+TCN Hybrid — switching removed

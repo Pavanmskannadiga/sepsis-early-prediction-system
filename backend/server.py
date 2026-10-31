@@ -305,6 +305,71 @@ async def get_patient(patient_id: str):
     return {**summary, **pred, "history": history}
 
 
+class DischargeRequest(BaseModel):
+    notes: Optional[str] = "Clinical discharge / recovery"
+    reason: Optional[str] = "non_septic"
+
+
+@app.post("/api/patients/{patient_id}/discharge")
+@app.post("/api/patient/{patient_id}/discharge")
+async def discharge_patient_endpoint(patient_id: str, req: Optional[DischargeRequest] = None):
+    """
+    Discharge a patient from the ICU (e.g. when non-septic or recovered),
+    and automatically admit a new incoming patient to the vacated bed.
+    """
+    patient = ward.get_patient(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found in active ward")
+
+    old_name = patient.name
+    bed = patient.bed
+    _latest_predictions.pop(patient_id, None)
+
+    new_patient = ward.discharge_and_admit_new(patient_id)
+    if not new_patient:
+        raise HTTPException(status_code=500, detail="Failed to admit replacement patient")
+
+    # Run immediate prediction for new patient
+    new_summary = new_patient.to_summary()
+    window = new_patient.get_feature_window()
+    new_pred = engine.predict(new_summary, feature_window=window)
+    _latest_predictions[new_patient.patient_id] = {**new_summary, **new_pred}
+
+    # Write audit log
+    write_audit_log(patient_id, "patient_discharged", {
+        "discharged_patient": f"{old_name} ({patient_id})",
+        "bed": bed,
+        "admitted_patient": f"{new_patient.name} ({new_patient.patient_id})",
+        "reason": req.reason if req else "non_septic",
+        "notes": req.notes if req else "Discharged",
+    })
+
+    combined_new = {**new_summary, **new_pred}
+
+    # Broadcast to websocket monitors
+    ward_msg = json.dumps({
+        "type": "patient_discharged",
+        "discharged_patient_id": patient_id,
+        "new_patient": combined_new,
+        "message": f"Patient {old_name} ({patient_id}) discharged. Bed {bed} assigned to new patient {new_patient.name} ({new_patient.patient_id}).",
+        "timestamp": datetime.now().isoformat(),
+    })
+    for ws in list(_ward_connections):
+        try:
+            asyncio.create_task(ws.send_text(ward_msg))
+        except Exception:
+            pass
+
+    return {
+        "status": "success",
+        "message": f"Patient {old_name} ({patient_id}) discharged successfully. New patient {new_patient.name} ({new_patient.patient_id}) admitted to {bed}.",
+        "discharged_patient_id": patient_id,
+        "discharged_name": old_name,
+        "bed": bed,
+        "new_patient": combined_new,
+    }
+
+
 # ── Real machine data ingestion ─────────────────────────────────────────────
 class MachineReading(BaseModel):
     patient_id: str
