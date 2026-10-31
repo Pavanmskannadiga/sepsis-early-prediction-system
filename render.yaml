@@ -9,8 +9,6 @@ services:
     startCommand: python start_server.py
     healthCheckPath: /api/status
     envVars:
-      - key: PORT
-        value: 8000
       - key: ICU_PATIENT_COUNT
         value: 12
       - key: PYTHONUNBUFFERED
