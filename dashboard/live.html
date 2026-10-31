@@ -235,6 +235,32 @@ canvas.sparkline{width:100%;height:36px;display:block;border-radius:4px}
   cursor: not-allowed;
   transform: none;
 }
+.discharge-toast {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.5rem;
+  background: rgba(16, 185, 129, 0.95);
+  backdrop-filter: blur(12px);
+  color: #fff;
+  padding: 0.85rem 1.4rem;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  box-shadow: 0 12px 36px rgba(0,0,0,0.4), 0 0 20px rgba(16, 185, 129, 0.4);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  transform: translateY(-50px);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.discharge-toast.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
 /* ── Interp toast at bottom of card ──────────────────────────── */
 .card-interp{
   padding:.5rem 1rem;font-size:.7rem;color:var(--dim);line-height:1.4;
@@ -1728,24 +1754,30 @@ function closeModal() {
 }
 
 // ── 🏥 Patient Discharge & Bed Reassignment Logic ─────────────
-function showToast(msg) {
-  const banner = document.getElementById('alertBanner');
-  const alertText = document.getElementById('alertText');
-  if (banner && alertText) {
-    alertText.textContent = msg;
-    banner.classList.add('visible');
-    setTimeout(() => {
-      if (alertText.textContent === msg) {
-        banner.classList.remove('visible');
-      }
-    }, 7000);
+const _pendingDischarges = {};
+
+function showDischargeToast(msg, type = 'success') {
+  let toast = document.getElementById('dischargeToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'dischargeToast';
+    toast.className = 'discharge-toast';
+    document.body.appendChild(toast);
   }
+  const bg = type === 'warn' ? 'rgba(234, 179, 8, 0.95)' : type === 'error' ? 'rgba(239, 68, 68, 0.95)' : 'rgba(16, 185, 129, 0.95)';
+  toast.style.background = bg;
+  toast.innerHTML = (type === 'warn' ? '⚠️ ' : type === 'error' ? '❌ ' : '✅ ') + msg;
+  toast.classList.add('show');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 5000);
 }
 
 function handleDischargeNotification(data) {
   const { discharged_patient_id, new_patient, message } = data;
   if (message) {
-    showToast(`🏥 ${message}`);
+    showDischargeToast(message, 'success');
   }
   if (discharged_patient_id && new_patient) {
     delete riskHistory[discharged_patient_id];
@@ -1778,46 +1810,73 @@ async function dischargePatient(pid, evt) {
   const patientName = card ? card.querySelector('.card-name')?.textContent || pid : pid;
   const pill = document.getElementById(`pill-${pid}`);
   const isHighRisk = pill && (pill.textContent.includes('HIGH') || pill.textContent.includes('CRITICAL'));
-
-  const confirmMsg = isHighRisk
-    ? `⚠️ CAUTION: Patient ${patientName} (${pid}) has elevated sepsis risk!\n\nAre you sure you want to discharge them from the ICU?`
-    : `🏥 Discharge Patient ${patientName} (${pid})?\n\nThis patient is non-septic / recovered. Discharging will safely free their bed and admit a new incoming ICU patient.`;
-
-  if (!confirm(confirmMsg)) return;
-
   const btn = document.getElementById(`disch-${pid}`);
+
+  // For High/Critical risk: require 2nd click confirmation inline on button (no browser dialog)
+  if (isHighRisk && !_pendingDischarges[pid]) {
+    _pendingDischarges[pid] = true;
+    if (btn) {
+      btn.innerHTML = '⚠️ Confirm Discharge?';
+      btn.style.background = 'rgba(239, 68, 68, 0.3)';
+      btn.style.borderColor = '#ef4444';
+      btn.style.color = '#fca5a5';
+      setTimeout(() => {
+        if (_pendingDischarges[pid]) {
+          delete _pendingDischarges[pid];
+          if (btn) {
+            btn.innerHTML = '🏥 Discharge';
+            btn.style.background = '';
+            btn.style.borderColor = '';
+            btn.style.color = '';
+          }
+        }
+      }, 4000);
+    }
+    showDischargeToast(`⚠️ Patient ${patientName} is high risk! Click the button again within 4s to confirm discharge.`, 'warn');
+    return;
+  }
+  delete _pendingDischarges[pid];
+
+  // Visual loading feedback
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '⏳ Discharging...';
   }
 
-  try {
-    const res = await fetch(`${API_BASE}/api/patients/${pid}/discharge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: isHighRisk ? 'manual_override' : 'non_septic', notes: 'Discharged by clinician' })
-    });
-
-    if (!res.ok) {
-      throw new Error(`Server returned HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
-    handleDischargeNotification(data);
-  } catch (err) {
-    console.warn('Remote discharge call failed, checking offline engine fallback:', err);
-    if (window.standaloneICUEngine && typeof window.standaloneICUEngine.dischargePatient === 'function') {
-      const newP = window.standaloneICUEngine.dischargePatient(pid);
-      if (newP) {
-        handleDischargeNotification({
-          discharged_patient_id: pid,
-          new_patient: newP,
-          message: `Patient ${patientName} (${pid}) discharged. Bed reassigned to newly admitted patient ${newP.name} (${newP.patient_id}).`
-        });
-        return;
+  // 1. Try backend API via relative URL
+  let success = false;
+  if (location.protocol.startsWith('http')) {
+    try {
+      const res = await fetch(`/api/patients/${pid}/discharge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: isHighRisk ? 'manual_override' : 'non_septic', notes: 'Discharged by clinician' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        handleDischargeNotification(data);
+        success = true;
       }
+    } catch (err) {
+      console.warn('Backend discharge failed, attempting standalone offline discharge:', err);
     }
-    showToast(`Discharge note: ${err.message}`);
+  }
+
+  // 2. Standalone offline fallback
+  if (!success && window.standaloneICUEngine && typeof window.standaloneICUEngine.dischargePatient === 'function') {
+    const newP = window.standaloneICUEngine.dischargePatient(pid);
+    if (newP) {
+      handleDischargeNotification({
+        discharged_patient_id: pid,
+        new_patient: newP,
+        message: `Patient ${patientName} (${pid}) discharged. Bed reassigned to newly admitted patient ${newP.name} (${newP.patient_id}).`
+      });
+      success = true;
+    }
+  }
+
+  if (!success) {
+    showDischargeToast(`Discharge failed for patient ${patientName}.`, 'error');
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = '🏥 Discharge';
