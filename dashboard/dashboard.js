@@ -438,6 +438,16 @@
     }
 
     /* ===================== CROSS-HOSPITAL CHART ===================== */
+    function hexToRgba(hex, alpha) {
+        if (!hex) return `rgba(102,126,234,${alpha})`;
+        if (hex.startsWith('rgba')) return hex;
+        if (hex.startsWith('rgb')) return hex.replace('rgb', 'rgba').replace(')', `,${alpha})`);
+        let clr = hex.replace('#', '');
+        if (clr.length === 3) clr = clr.split('').map(x => x + x).join('');
+        const num = parseInt(clr, 16);
+        return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
+    }
+
     function drawCrossHospital() {
         const canvas = $('#crossHospitalCanvas');
         if (!canvas) return;
@@ -445,103 +455,123 @@
         const c = chartColors();
 
         const data = [
-            { label: 'A→A', auc: 0.91, f1: 0.82, sens: 0.87 },
-            { label: 'A→B', auc: 0.85, f1: 0.74, sens: 0.80 },
-            { label: 'B→A', auc: 0.84, f1: 0.73, sens: 0.79 },
-            { label: 'B→B', auc: 0.89, f1: 0.79, sens: 0.84 },
-            { label: 'A+B→A', auc: 0.92, f1: 0.83, sens: 0.88 },
-            { label: 'A+B→B', auc: 0.90, f1: 0.81, sens: 0.86 },
+            { label: 'Train A → Test A', shortLabel: 'A → A', auc: 0.91, f1: 0.82, sens: 0.87 },
+            { label: 'Train A → Test B', shortLabel: 'A → B', auc: 0.85, f1: 0.74, sens: 0.80 },
+            { label: 'Train B → Test A', shortLabel: 'B → A', auc: 0.84, f1: 0.73, sens: 0.79 },
+            { label: 'Train B → Test B', shortLabel: 'B → B', auc: 0.89, f1: 0.79, sens: 0.84 },
+            { label: 'Pooled → Test A',  shortLabel: 'A+B → A', auc: 0.92, f1: 0.83, sens: 0.88 },
+            { label: 'Pooled → Test B',  shortLabel: 'A+B → B', auc: 0.90, f1: 0.81, sens: 0.86 },
         ];
 
-        const pad = { t: 30, r: 30, l: 50, b: 50 };
+        const pad = { t: 45, r: 30, l: 55, b: 55 };
         const plotW = w - pad.l - pad.r;
         const plotH = h - pad.t - pad.b;
         const groupW = plotW / data.length;
-        const barW = groupW * 0.22;
+        const barW = Math.max(10, Math.min(22, groupW * 0.24));
         const metrics = ['auc', 'f1', 'sens'];
         const colors = [c.accent1, c.accent2, c.accent3];
-        const labels = ['AUC-ROC', 'F1', 'Sensitivity'];
+        const labels = ['AUC-ROC', 'F1 Score', 'Sensitivity'];
 
-        // Y-axis
-        for (let i = 0; i <= 5; i++) {
-            const val = 0.6 + i * 0.08;
-            const y = pad.t + plotH - ((val - 0.6) / 0.4) * plotH;
-            ctx.strokeStyle = c.grid; ctx.lineWidth = 0.5;
-            ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
-            ctx.fillStyle = c.text; ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'right';
-            ctx.fillText(val.toFixed(2), pad.l - 8, y + 4);
-        }
-        ctx.strokeStyle = c.axis; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h - pad.b); ctx.lineTo(w - pad.r, h - pad.b); ctx.stroke();
+        function renderFrame(eased) {
+            ctx.clearRect(0, 0, w, h);
 
-        // X labels
-        data.forEach((d, i) => {
-            const cx = pad.l + groupW * i + groupW / 2;
-            ctx.fillStyle = c.text; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText(d.label, cx, h - pad.b + 20);
-        });
-
-        // Animate bars
-        const duration = 1200;
-        const startT = performance.now();
-        function tick(now) {
-            const t = clamp((now - startT) / duration, 0, 1);
-            const eased = 1 - Math.pow(1 - t, 3);
-
-            ctx.clearRect(pad.l + 1, pad.t, plotW, plotH);
-            // Re-draw gridlines
+            // Gridlines & Y-axis numbers
             for (let i = 0; i <= 5; i++) {
                 const val = 0.6 + i * 0.08;
                 const y = pad.t + plotH - ((val - 0.6) / 0.4) * plotH;
                 ctx.strokeStyle = c.grid; ctx.lineWidth = 0.5;
                 ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+                ctx.fillStyle = c.text; ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'right';
+                ctx.fillText(val.toFixed(2), pad.l - 8, y + 4);
             }
 
+            // Axes lines
+            ctx.strokeStyle = c.axis; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(pad.l, pad.t);
+            ctx.lineTo(pad.l, h - pad.b);
+            ctx.lineTo(w - pad.r, h - pad.b);
+            ctx.stroke();
+
+            // Y-axis Title
+            ctx.save();
+            ctx.translate(16, pad.t + plotH / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillStyle = c.text;
+            ctx.font = '11px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Score (0.60 – 1.00)', 0, 0);
+            ctx.restore();
+
+            // Legend at top
+            labels.forEach((lbl, i) => {
+                const lx = pad.l + 10 + i * 130;
+                ctx.fillStyle = colors[i];
+                roundRect(ctx, lx, 14, 12, 12, 3);
+                ctx.fill();
+                ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                ctx.font = '600 11px Inter, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(lbl, lx + 18, 24);
+            });
+
+            // X-axis experiment labels & Cohort subtitle
+            data.forEach((d, i) => {
+                const cx = pad.l + groupW * i + groupW / 2;
+                ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                ctx.font = '600 11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(d.shortLabel, cx, h - pad.b + 18);
+
+                ctx.fillStyle = c.text;
+                ctx.font = '9px Inter, sans-serif';
+                const sub = d.label.includes('Pooled') ? 'Combined' : (d.label.startsWith('Train A') ? 'Hospital A' : 'Hospital B');
+                ctx.fillText(sub, cx, h - pad.b + 32);
+            });
+
+            // Bars
             data.forEach((d, i) => {
                 const cx = pad.l + groupW * i + groupW / 2;
                 metrics.forEach((m, mi) => {
                     const val = d[m];
-                    const barH = ((val - 0.6) / 0.4) * plotH * eased;
-                    const bx = cx + (mi - 1) * (barW + 3) - barW / 2;
+                    const barH = Math.max(2, ((val - 0.6) / 0.4) * plotH * eased);
+                    const bx = cx + (mi - 1) * (barW + 4) - barW / 2;
                     const by = pad.t + plotH - barH;
 
                     const grad = ctx.createLinearGradient(0, by, 0, pad.t + plotH);
                     grad.addColorStop(0, colors[mi]);
-                    grad.addColorStop(1, colors[mi].replace(')', ',0.3)').replace('rgb', 'rgba').replace('#', ''));
-                    // Simpler approach for hex
-                    ctx.globalAlpha = 0.85;
-                    ctx.fillStyle = colors[mi];
-                    roundRect(ctx, bx, by, barW, barH, 3);
-                    ctx.fill();
-                    ctx.globalAlpha = 1;
+                    grad.addColorStop(1, hexToRgba(colors[mi], 0.35));
 
-                    // Value on top
-                    if (eased > 0.7) {
-                        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                        ctx.font = '9px Inter, sans-serif';
+                    ctx.fillStyle = grad;
+                    roundRect(ctx, bx, by, barW, barH, 4);
+                    ctx.fill();
+
+                    ctx.strokeStyle = colors[mi];
+                    ctx.lineWidth = 1;
+                    roundRect(ctx, bx, by, barW, barH, 4);
+                    ctx.stroke();
+
+                    // Display value on top of bar
+                    if (eased > 0.6) {
+                        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                        ctx.font = '600 9px JetBrains Mono, monospace';
                         ctx.textAlign = 'center';
                         ctx.fillText(val.toFixed(2), bx + barW / 2, by - 5);
                     }
                 });
             });
+        }
 
+        // Animate
+        const duration = 1000;
+        const startT = performance.now();
+        function tick(now) {
+            const t = clamp((now - startT) / duration, 0, 1);
+            const eased = 1 - Math.pow(1 - t, 3);
+            renderFrame(eased);
             if (t < 1) requestAnimationFrame(tick);
         }
         requestAnimationFrame(tick);
-
-        // Legend
-        setTimeout(() => {
-            labels.forEach((lbl, i) => {
-                const lx = pad.l + 10 + i * 100;
-                ctx.fillStyle = colors[i];
-                roundRect(ctx, lx, pad.t + 5, 12, 12, 2);
-                ctx.fill();
-                ctx.fillStyle = c.text;
-                ctx.font = '10px Inter, sans-serif';
-                ctx.textAlign = 'left';
-                ctx.fillText(lbl, lx + 18, pad.t + 14);
-            });
-        }, 1400);
     }
 
     /* ===================== DONUT CHARTS ===================== */
