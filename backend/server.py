@@ -726,6 +726,7 @@ async def model_status():
         "active_model_type": getattr(engine, "model_type", "heuristic"),
         "model_loaded": engine.model_loaded,
         "supported_models": [
+            {"id": "bilstm_tcn", "name": "BiLSTM + TCN Hybrid", "type": "Recurrent + Dilated Convolutional Fusion"},
             {"id": "ensemble", "name": "Deep Sepsis Ensemble (BiLSTM+Transformer+TCN)", "type": "Multi-Model Soft Voting"},
             {"id": "tcn", "name": "Temporal Convolutional Network (TCN)", "type": "Dilated Causal CNN"},
             {"id": "transformer", "name": "Transformer Encoder", "type": "Multi-Head Self-Attention"},
