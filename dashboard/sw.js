@@ -1,5 +1,5 @@
 // SepsisPredictAI Clinical Offline-First Service Worker
-const CACHE_NAME = 'sepsis-cdss-v2.2';
+const CACHE_NAME = 'sepsis-cdss-v2.3';
 const ASSETS_TO_CACHE = [
   '/',
   '/live.html',

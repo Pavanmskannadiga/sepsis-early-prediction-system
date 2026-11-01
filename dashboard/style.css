@@ -181,6 +181,7 @@ body {
 .arch-node-icon svg { width: 26px; height: 26px; }
 .arch-input .arch-node-icon { background: rgba(56,189,248,0.12); color: #38bdf8; }
 .arch-bilstm .arch-node-icon { background: rgba(102,126,234,0.12); color: var(--accent-1); }
+.arch-tcn .arch-node-icon { background: rgba(6,182,212,0.15); color: #06b6d4; }
 .arch-attention .arch-node-icon { background: rgba(167,139,250,0.12); color: #a78bfa; }
 .arch-dense .arch-node-icon { background: rgba(251,146,60,0.12); color: #fb923c; }
 .arch-output .arch-node-icon { background: rgba(34,197,94,0.12); color: #22c55e; }

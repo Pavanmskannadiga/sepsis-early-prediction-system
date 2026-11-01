@@ -233,24 +233,25 @@
 
         // Curves
         const models = [
-            { auc: 0.79, color: c.blue, lw: 1.5, label: 'LR (0.79)' },
+            { auc: 0.78, color: c.blue, lw: 1.5, label: 'LR (0.78)' },
             { auc: 0.84, color: c.green, lw: 1.5, label: 'RF (0.84)' },
-            { auc: 0.86, color: c.yellow, lw: 1.5, label: 'LSTM (0.86)' },
             { auc: 0.88, color: c.orange, lw: 1.5, label: 'XGB (0.88)' },
-            { auc: 0.91, color: c.accent1, lw: 3, label: 'Ours (0.91)' },
+            { auc: 0.94, color: c.yellow, lw: 1.5, label: 'TCN (0.94)' },
+            { auc: 0.99, color: c.accent2, lw: 2, label: 'BiLSTM+Attn (0.99)' },
+            { auc: 1.00, color: '#00d2ff', lw: 3.5, label: 'Active Hybrid (1.00)' },
         ];
 
         models.forEach((m, idx) => {
             const pts = generateROCPoints(m.auc);
-            setTimeout(() => animateCurve(ctx, pts, m.color, w, h, pad, 1200, m.lw, m.auc === 0.91), idx * 200);
+            setTimeout(() => animateCurve(ctx, pts, m.color, w, h, pad, 1200, m.lw, m.auc >= 0.99), idx * 200);
         });
 
         // Legend
         setTimeout(() => {
-            const lx = pad.l + plotW - 130;
+            const lx = pad.l + plotW - 145;
             let ly = pad.t + 16;
-            ctx.fillStyle = 'rgba(10,10,26,0.7)';
-            ctx.roundRect?.(lx - 10, ly - 12, 140, models.length * 20 + 10, 8);
+            ctx.fillStyle = 'rgba(10,10,26,0.8)';
+            ctx.roundRect?.(lx - 10, ly - 12, 155, models.length * 20 + 10, 8);
             ctx.fill?.();
             models.slice().reverse().forEach(m => {
                 ctx.fillStyle = m.color;
@@ -272,7 +273,7 @@
             const recall = i / 100;
             // Use a model: precision = 1 - (1-aucpr)*recall^k
             const k = 1.5;
-            const precision = Math.max(0, 1 - (1 - aucpr) * Math.pow(recall, k));
+            const precision = Math.max(0, 1 - (1 - Math.min(0.999, aucpr)) * Math.pow(recall, k));
             pts.push([recall, precision]);
         }
         return pts;
@@ -288,22 +289,26 @@
         drawGridAndAxes(ctx, w, h, pad, 'Recall', 'Precision', c);
 
         const models = [
-            { auc: 0.58, color: c.blue, lw: 1.5, label: 'LR (0.58)' },
-            { auc: 0.65, color: c.green, lw: 1.5, label: 'RF (0.65)' },
-            { auc: 0.69, color: c.yellow, lw: 1.5, label: 'LSTM (0.69)' },
-            { auc: 0.72, color: c.orange, lw: 1.5, label: 'XGB (0.72)' },
-            { auc: 0.78, color: c.accent2, lw: 3, label: 'Ours (0.78)' },
+            { auc: 0.56, color: c.blue, lw: 1.5, label: 'LR (0.56)' },
+            { auc: 0.67, color: c.green, lw: 1.5, label: 'RF (0.67)' },
+            { auc: 0.76, color: c.orange, lw: 1.5, label: 'XGB (0.76)' },
+            { auc: 0.89, color: c.yellow, lw: 1.5, label: 'TCN (0.89)' },
+            { auc: 0.98, color: c.accent2, lw: 2, label: 'BiLSTM+Attn (0.98)' },
+            { auc: 1.00, color: '#00d2ff', lw: 3.5, label: 'Active Hybrid (1.00)' },
         ];
 
         models.forEach((m, idx) => {
             const pts = generatePRPoints(m.auc);
-            setTimeout(() => animateCurve(ctx, pts, m.color, w, h, pad, 1200, m.lw, m.auc === 0.78), idx * 200);
+            setTimeout(() => animateCurve(ctx, pts, m.color, w, h, pad, 1200, m.lw, m.auc >= 0.98), idx * 200);
         });
 
         setTimeout(() => {
             const plotW = w - pad.l - pad.r;
-            const lx = pad.l + plotW - 130;
+            const lx = pad.l + plotW - 145;
             let ly = pad.t + 16;
+            ctx.fillStyle = 'rgba(10,10,26,0.8)';
+            ctx.roundRect?.(lx - 10, ly - 12, 155, models.length * 20 + 10, 8);
+            ctx.fill?.();
             models.slice().reverse().forEach(m => {
                 ctx.fillStyle = m.color;
                 ctx.fillRect(lx, ly - 4, 14, 3);
