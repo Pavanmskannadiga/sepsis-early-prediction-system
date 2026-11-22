@@ -21,7 +21,7 @@ import random
 import time
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -107,6 +107,7 @@ class SimulatedPatient:
             for k in NORMAL:
                 if k in SEPSIS_TARGET:
                     self.current_values[k] = NORMAL[k] + t * (SEPSIS_TARGET[k] - NORMAL[k])
+            self.sepsis_onset_hour = round(random.uniform(6.0, 14.0), 1)
 
     def _drift_toward(self, key: str, t: float) -> float:
         """Physiologically bounded drift with Ornstein-Uhlenbeck mean reversion."""
@@ -230,9 +231,127 @@ class SimulatedPatient:
             rows.append(row)
         return np.array(rows, dtype=np.float32)  # (T, 34)
 
+    def get_sepsis_attack_info(self) -> Dict[str, Any]:
+        """
+        Calculates sepsis attack time information:
+        - If sepsis has occurred (icu_hours >= sepsis_onset_hour):
+            attack timestamp, time elapsed since attack, onset hour
+        - If sepsis is impending (deteriorating / septic before onset):
+            projected attack timestamp, estimated time until onset
+        - If stable/recovering:
+            No active or projected attack
+        """
+        now = datetime.now()
+        adm_dt = now - timedelta(hours=self.icu_hours)
+
+        if self.trajectory == "septic":
+            if self.sepsis_onset_hour is None:
+                self.sepsis_onset_hour = max(1.0, round(self.icu_hours - random.uniform(1.0, 4.0), 1))
+            
+            if self.icu_hours >= self.sepsis_onset_hour:
+                attack_dt = adm_dt + timedelta(hours=self.sepsis_onset_hour)
+                hours_ago = round(max(0.1, self.icu_hours - self.sepsis_onset_hour), 1)
+                time_str = attack_dt.strftime("%I:%M %p")
+                return {
+                    "has_attacked": True,
+                    "status": "ATTACKED",
+                    "display": f"{time_str} (ICU Hr {round(self.sepsis_onset_hour, 1)})",
+                    "short": f"{time_str} ({hours_ago}h ago)",
+                    "detail": f"Clinical Sepsis Attack at {time_str} ({hours_ago}h ago, ICU Hr {round(self.sepsis_onset_hour, 1)})",
+                    "onset_hour": round(self.sepsis_onset_hour, 1),
+                    "hours_ago": hours_ago,
+                    "color": "#ef4444"
+                }
+            else:
+                hours_until = round(max(0.2, self.sepsis_onset_hour - self.icu_hours), 1)
+                proj_dt = now + timedelta(hours=hours_until)
+                time_str = proj_dt.strftime("%I:%M %p")
+                return {
+                    "has_attacked": False,
+                    "status": "IMPENDING",
+                    "display": f"Est. ~{time_str} (in ~{hours_until}h)",
+                    "short": f"~{time_str} (in {hours_until}h)",
+                    "detail": f"Projected Clinical Sepsis Attack in ~{hours_until}h (approx. {time_str})",
+                    "onset_hour": round(self.sepsis_onset_hour, 1),
+                    "hours_until": hours_until,
+                    "color": "#f59e0b"
+                }
+
+        elif self.trajectory == "deteriorating":
+            if self.sepsis_onset_hour is None:
+                self.sepsis_onset_hour = round(self.icu_hours + random.uniform(2.5, 6.0), 1)
+
+            if self.icu_hours >= self.sepsis_onset_hour:
+                attack_dt = adm_dt + timedelta(hours=self.sepsis_onset_hour)
+                hours_ago = round(max(0.1, self.icu_hours - self.sepsis_onset_hour), 1)
+                time_str = attack_dt.strftime("%I:%M %p")
+                return {
+                    "has_attacked": True,
+                    "status": "ATTACKED",
+                    "display": f"{time_str} (ICU Hr {round(self.sepsis_onset_hour, 1)})",
+                    "short": f"{time_str} ({hours_ago}h ago)",
+                    "detail": f"Clinical Sepsis Attack at {time_str} ({hours_ago}h ago, ICU Hr {round(self.sepsis_onset_hour, 1)})",
+                    "onset_hour": round(self.sepsis_onset_hour, 1),
+                    "hours_ago": hours_ago,
+                    "color": "#ef4444"
+                }
+            else:
+                hours_until = round(max(0.4, self.sepsis_onset_hour - self.icu_hours), 1)
+                proj_dt = now + timedelta(hours=hours_until)
+                time_str = proj_dt.strftime("%I:%M %p")
+                return {
+                    "has_attacked": False,
+                    "status": "IMPENDING",
+                    "display": f"Est. ~{time_str} (in ~{hours_until}h)",
+                    "short": f"~{time_str} (in {hours_until}h)",
+                    "detail": f"High Impending Risk: Projected Onset in ~{hours_until}h at {time_str}",
+                    "onset_hour": round(self.sepsis_onset_hour, 1),
+                    "hours_until": hours_until,
+                    "color": "#f59e0b"
+                }
+
+        elif self.trajectory == "recovering":
+            if self.sepsis_onset_hour is not None and self.icu_hours >= self.sepsis_onset_hour:
+                attack_dt = adm_dt + timedelta(hours=self.sepsis_onset_hour)
+                hours_ago = round(self.icu_hours - self.sepsis_onset_hour, 1)
+                time_str = attack_dt.strftime("%I:%M %p")
+                return {
+                    "has_attacked": True,
+                    "status": "RESOLVING",
+                    "display": f"Past: {time_str} (ICU Hr {round(self.sepsis_onset_hour, 1)})",
+                    "short": f"Past {time_str}",
+                    "detail": f"Past Attack at {time_str} ({hours_ago}h ago) — Currently Resolving",
+                    "onset_hour": round(self.sepsis_onset_hour, 1),
+                    "hours_ago": hours_ago,
+                    "color": "#10b981"
+                }
+            return {
+                "has_attacked": False,
+                "status": "RECOVERED",
+                "display": "Resolved / Stable",
+                "short": "Resolved",
+                "detail": "Patient stable and recovering — No active sepsis attack",
+                "onset_hour": None,
+                "hours_ago": None,
+                "color": "#10b981"
+            }
+
+        else:  # stable
+            return {
+                "has_attacked": False,
+                "status": "NONE",
+                "display": "None (Stable)",
+                "short": "None",
+                "detail": "Vitals within physiological equilibrium — No sepsis detected",
+                "onset_hour": None,
+                "hours_ago": None,
+                "color": "#64748b"
+            }
+
     def to_summary(self) -> Dict:
         """Compact dict for WebSocket broadcast."""
         cv = self.current_values
+        attack_info = self.get_sepsis_attack_info()
         return {
             "patient_id": self.patient_id,
             "name": self.name,
@@ -241,7 +360,13 @@ class SimulatedPatient:
             "bed": self.bed,
             "trajectory": self.trajectory,
             "icu_hours": round(self.icu_hours, 1),
-            "sepsis_onset_hour": self.sepsis_onset_hour,
+            "sepsis_onset_hour": attack_info["onset_hour"],
+            "sepsis_attack_time": attack_info["display"],
+            "sepsis_attack_short": attack_info["short"],
+            "sepsis_attack_detail": attack_info["detail"],
+            "sepsis_attack_status": attack_info["status"],
+            "sepsis_attack_color": attack_info["color"],
+            "has_sepsis_attacked": attack_info["has_attacked"],
             "vitals": {
                 "HR":    round(cv.get("HR", 75), 1),
                 "O2Sat": round(cv.get("O2Sat", 97), 1),

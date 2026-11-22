@@ -270,6 +270,58 @@ canvas.sparkline{width:100%;height:36px;display:block;border-radius:4px}
   opacity: 1;
   pointer-events: auto;
 }
+/* ── Sepsis Attack Time Display ──────────────────────────────── */
+.card-attack-time {
+  padding: 0.3rem 0.75rem;
+  margin: 0.25rem 0.6rem 0.15rem 0.6rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.68rem;
+  transition: all 0.2s ease;
+}
+.card-attack-time.status-attacked {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.15);
+}
+.card-attack-time.status-attacked .attack-badge-val {
+  color: #fca5a5;
+  font-weight: 800;
+}
+.card-attack-time.status-impending {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.card-attack-time.status-impending .attack-badge-val {
+  color: #fde047;
+  font-weight: 700;
+}
+.card-attack-time.status-resolving {
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+.card-attack-time.status-resolving .attack-badge-val {
+  color: #86efac;
+}
+.card-attack-time.status-none .attack-badge-val {
+  color: var(--dim);
+}
+.attack-badge-label {
+  color: var(--dim);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+.attack-badge-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+}
 /* ── Interp toast at bottom of card ──────────────────────────── */
 .card-interp{
   padding:.5rem 1rem;font-size:.7rem;color:var(--dim);line-height:1.4;
@@ -1435,9 +1487,12 @@ function handleWardUpdate(data) {
   // Alerts
   const alerts = data.alerts || [];
   if (alerts.length > 0) {
-    const names = alerts.map(a => `${a.name} (${a.bed})`).join(', ');
+    const alertItems = alerts.map(a => {
+      const timeInfo = a.sepsis_attack_time ? ` [Attack: ${a.sepsis_attack_time}]` : '';
+      return `${a.name} (${a.bed})${timeInfo}`;
+    });
     document.getElementById('alertText').textContent =
-      `🚨 SEPSIS ALERT: ${names} — Immediate intervention required`;
+      `🚨 SEPSIS ALERT: ${alertItems.join(' | ')} — Immediate intervention required`;
     document.getElementById('alertBanner').classList.add('visible');
   } else {
     document.getElementById('alertBanner').classList.remove('visible');
@@ -1547,6 +1602,13 @@ function createCard(p) {
     </div>
     <div class="card-shap" id="shap-${p.patient_id}"></div>
     <div class="card-scores" id="scores-${p.patient_id}"></div>
+    <div class="card-attack-time" id="attack-${p.patient_id}">
+      <span style="display:flex;align-items:center;gap:0.3rem;">
+        <span class="attack-badge-icon">⚡</span>
+        <span class="attack-badge-label">Sepsis Attack:</span>
+      </span>
+      <span class="attack-badge-val" id="attack-val-${p.patient_id}">${p.sepsis_attack_time || 'Calculating…'}</span>
+    </div>
     <div class="card-interp" id="interp-${p.patient_id}"></div>
     <div class="card-footer">
       <span class="card-footer-text" id="icu-${p.patient_id}">ICU: ${p.icu_hours?.toFixed(1)}h</span>
@@ -1628,6 +1690,29 @@ function updateCard(card, p) {
         <span class="score-chip-val" style="color:${col}">${val}<span style="font-size:.55rem;font-weight:400;color:var(--dim)">/${max}</span></span>
       </div>`;
     }).join('');
+  }
+
+  // Sepsis Attack Time
+  const attEl = document.getElementById(`attack-${p.patient_id}`);
+  const attVal = document.getElementById(`attack-val-${p.patient_id}`);
+  if (attVal) {
+    const dispTime = p.sepsis_attack_time || (
+      p.trajectory === 'septic' ? 'Active Clinical Attack' :
+      p.trajectory === 'deteriorating' ? 'Impending (~3.5h)' :
+      p.trajectory === 'recovering' ? 'Past / Resolving' : 'None (Stable)'
+    );
+    attVal.textContent = dispTime;
+    if (attEl) {
+      let statusCls = 'status-none';
+      if (p.has_sepsis_attacked || p.sepsis_attack_status === 'ATTACKED' || p.trajectory === 'septic') {
+        statusCls = 'status-attacked';
+      } else if (p.sepsis_attack_status === 'IMPENDING' || p.trajectory === 'deteriorating') {
+        statusCls = 'status-impending';
+      } else if (p.sepsis_attack_status === 'RESOLVING' || p.trajectory === 'recovering') {
+        statusCls = 'status-resolving';
+      }
+      attEl.className = `card-attack-time ${statusCls}`;
+    }
   }
 
   // Interp
@@ -1776,13 +1861,27 @@ function renderModal(p) {
   const body = document.getElementById('modalBody');
   body.innerHTML = `
     <div>
-      <div class="modal-section-title">Risk Assessment</div>
+      <div class="modal-section-title">Risk Assessment & Sepsis Attack Time</div>
       <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
         <div style="font-size:2rem;font-weight:800;font-family:'JetBrains Mono',monospace;color:${
           {LOW:'#4ade80',MODERATE:'#facc15',HIGH:'#fb923c',CRITICAL:'#f87171'}[p.risk_level]||'white'
         }">${(p.risk_score||0).toFixed(3)}</div>
         <span class="risk-pill ${p.risk_level||'LOW'}" style="font-size:.8rem">${p.risk_emoji||''} ${p.risk_level||'—'}</span>
         <span style="font-size:.75rem;color:var(--dim);flex:1">${p.interpretation||''}</span>
+      </div>
+      <div style="margin-top:0.65rem; padding:0.6rem 0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:6px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+        <div>
+          <span style="font-size:0.62rem; color:var(--dim); text-transform:uppercase; letter-spacing:0.04em; display:block; font-weight:700;">Clinical Sepsis Attack Time</span>
+          <strong style="font-size:0.95rem; font-family:'JetBrains Mono',monospace; color:${p.sepsis_attack_color || (p.has_sepsis_attacked ? '#ef4444' : '#38bdf8')}">
+            ⚡ ${p.sepsis_attack_time || (p.trajectory === 'septic' ? 'Active Attack' : (p.trajectory === 'deteriorating' ? 'Impending (~3.5h)' : 'None (Stable)'))}
+          </strong>
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:0.62rem; color:var(--dim); display:block; text-transform:uppercase; font-weight:700;">Status / Trajectory</span>
+          <span style="font-size:0.75rem; color:${p.sepsis_attack_color || '#94a3b8'}; font-weight:600;">
+            ${p.sepsis_attack_detail || (p.trajectory === 'septic' ? 'Active Sepsis: Resuscitation Protocol Active' : 'Normal Equilibrium')}
+          </span>
+        </div>
       </div>
     </div>
     <div>
@@ -3072,7 +3171,15 @@ function renderConditionPanel(pid) {
 
   const level = p.risk_level || 'LOW';
   const badge = document.getElementById('condPatientRiskBadge');
-  if (badge) badge.innerHTML = `<span class="cond-risk-badge ${level}">${p.risk_emoji||''} ${level} RISK — ${(p.risk_score*100||0).toFixed(1)}%</span>`;
+  if (badge) {
+    const attTime = p.sepsis_attack_time || (p.trajectory === 'septic' ? 'Active Attack' : 'None (Stable)');
+    badge.innerHTML = `
+      <span class="cond-risk-badge ${level}">${p.risk_emoji||''} ${level} RISK — ${(p.risk_score*100||0).toFixed(1)}%</span>
+      <span style="font-size:0.75rem; font-family:'JetBrains Mono',monospace; padding:0.25rem 0.6rem; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid var(--border); color:${p.sepsis_attack_color || '#38bdf8'}; font-weight:600;">
+        ⚡ Attack: ${attTime}
+      </span>
+    `;
+  }
 
   renderCondOverview(p);
   renderCondTreatment(p);
@@ -3171,10 +3278,14 @@ function renderCondOverview(p) {
       <div class="cond-block">
         <h4>🧬 AI Model Interpretation</h4>
         <p>${p.interpretation || 'No AI interpretation available.'}</p>
-        <div style="margin-top:0.5rem; font-size:0.68rem; color:var(--dim);">
+        <div style="margin-top:0.5rem; font-size:0.68rem; color:var(--dim); line-height:1.5;">
           Trajectory: <strong class="traj-${p.trajectory}" style="color:${{stable:'var(--green)',recovering:'var(--cyan)',deteriorating:'var(--yellow)',septic:'var(--red)'}[p.trajectory]||'white'}">${p.trajectory || '—'}</strong>
           &nbsp;|&nbsp; ICU Stay: ${(p.icu_hours||0).toFixed(1)}h
           &nbsp;|&nbsp; Model: ${p.model_used || 'BiLSTM'}
+          <br>
+          <span style="font-weight:700; color:${p.sepsis_attack_color || '#38bdf8'}; font-family:'JetBrains Mono',monospace;">
+            ⚡ Clinical Attack: ${p.sepsis_attack_detail || p.sepsis_attack_time || 'None (Stable)'}
+          </span>
         </div>
         ${p.top_features?.length ? `
         <div style="margin-top:0.6rem;">
@@ -3530,6 +3641,7 @@ Please select a patient from the ward grid or dropdown to view their individuali
 
 • **Risk Classification:** **${lvl} RISK (${scorePct}%)**
 • **Clinical Trajectory:** *${p.trajectory || 'stable'}*
+• **Sepsis Attack Time:** **${p.sepsis_attack_time || (p.trajectory === 'septic' ? 'Active Clinical Attack' : 'None (Stable)')}**
 • **Clinical Scores:** qSOFA: **${cs.qsofa ?? '—'}/3** | NEWS2: **${cs.news2 ?? '—'}/20** | Partial SOFA: **${cs.sofa ?? '—'}/8**
 
 **Clinical Summary:**

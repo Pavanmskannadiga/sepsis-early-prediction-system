@@ -250,10 +250,19 @@ def run_mllp_server(host: str, port: int, api_url: str):
                         # Clean buffer
                         data_buffer = data_buffer[end_idx + 2:]
             
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass  # Already closed by remote
         except KeyboardInterrupt:
             print("\nShutting down HL7 Server...")
             break
+        except OSError as e:
+            # WinError 10053/10054: client disconnected after one message — normal for per-message connections
+            if e.errno in (10053, 10054, 104, 32):
+                pass  # Swallow expected connection-reset/broken-pipe errors silently
+            else:
+                print(f"  [ERROR] MLLP Server error: {e}")
         except Exception as e:
             print(f"  [ERROR] MLLP Server error: {e}")
 

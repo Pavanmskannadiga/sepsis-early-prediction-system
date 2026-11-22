@@ -192,9 +192,16 @@ async def _tick_loop():
             _latest_predictions[pid] = payload
             broadcast_payload.append(payload)
             if prediction.get("alert"):
-                alerts.append({"patient_id": pid, "name": summary["name"],
-                               "bed": summary["bed"], "risk_score": prediction["risk_score"],
-                               "risk_level": prediction["risk_level"]})
+                alerts.append({
+                    "patient_id": pid,
+                    "name": summary["name"],
+                    "bed": summary["bed"],
+                    "risk_score": prediction["risk_score"],
+                    "risk_level": prediction["risk_level"],
+                    "sepsis_attack_time": summary.get("sepsis_attack_time", "N/A"),
+                    "sepsis_attack_status": summary.get("sepsis_attack_status", "ACTIVE"),
+                    "has_sepsis_attacked": summary.get("has_sepsis_attacked", False),
+                })
 
         # Build ward broadcast
         ward_msg = json.dumps({
@@ -603,7 +610,12 @@ async def ingest_fhir_observation(payload: dict, api_key: str = Depends(verify_a
         
         # EHR Alert Writeback for high risk thresholds
         if prediction.get("alert") or prediction.get("level") in ["HIGH", "CRITICAL"]:
-            await dispatch_ehr_alert(pid, prediction["score"], prediction["level"], prediction.get("evidence", {}))
+            await dispatch_ehr_alert(
+                pid,
+                prediction.get("score", prediction.get("risk_score", 0.0)),
+                prediction.get("level", prediction.get("risk_level", "LOW")),
+                prediction.get("evidence", {"top_features": prediction.get("top_features", []), "clinical_scores": prediction.get("clinical_scores", {})})
+            )
             
     return {"status": "success", "results": results}
 

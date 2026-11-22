@@ -512,15 +512,66 @@ class StandaloneICUEngine {
     return bundle;
   }
 
+  getAttackInfo(p) {
+    const now = new Date();
+    const idNum = parseInt(String(p.patient_id).replace(/\D/g, '')) || 101;
+    const hourOffset = (idNum % 5) + 1;
+    const pastDate = new Date(now.getTime() - hourOffset * 3600000);
+    const pastStr = pastDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const futureDate = new Date(now.getTime() + (hourOffset + 2) * 1800000);
+    const futureStr = futureDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (p.trajectory === 'septic') {
+      return {
+        has_sepsis_attacked: true,
+        sepsis_attack_status: 'ATTACKED',
+        sepsis_attack_time: `${pastStr} (ICU Hr ${hourOffset + 4})`,
+        sepsis_attack_short: `${pastStr} (${hourOffset}h ago)`,
+        sepsis_attack_detail: `Clinical Sepsis Attack at ${pastStr} (${hourOffset}h ago, ICU Hr ${hourOffset + 4})`,
+        sepsis_attack_color: '#ef4444'
+      };
+    } else if (p.trajectory === 'deteriorating') {
+      const hrsUntil = (hourOffset * 0.8).toFixed(1);
+      return {
+        has_sepsis_attacked: false,
+        sepsis_attack_status: 'IMPENDING',
+        sepsis_attack_time: `Est. ~${futureStr} (in ~${hrsUntil}h)`,
+        sepsis_attack_short: `~${futureStr} (in ${hrsUntil}h)`,
+        sepsis_attack_detail: `High Impending Risk: Projected Clinical Attack in ~${hrsUntil}h at ${futureStr}`,
+        sepsis_attack_color: '#f59e0b'
+      };
+    } else if (p.trajectory === 'recovering') {
+      return {
+        has_sepsis_attacked: true,
+        sepsis_attack_status: 'RESOLVING',
+        sepsis_attack_time: `Past: ${pastStr} (ICU Hr ${hourOffset + 3})`,
+        sepsis_attack_short: `Past ${pastStr}`,
+        sepsis_attack_detail: `Past Attack at ${pastStr} (${hourOffset + 2}h ago) — Currently Resolving`,
+        sepsis_attack_color: '#10b981'
+      };
+    } else {
+      return {
+        has_sepsis_attacked: false,
+        sepsis_attack_status: 'NONE',
+        sepsis_attack_time: 'None (Stable)',
+        sepsis_attack_short: 'None',
+        sepsis_attack_detail: 'Vitals within physiological equilibrium — No sepsis detected',
+        sepsis_attack_color: '#64748b'
+      };
+    }
+  }
+
   // ── Patient Detail Summary ────────────────────────────────
   getPatientSummary(pid) {
     const p = this.patients.find(x => x.patient_id === pid) || this.patients[0];
     const scores = this.calculateClinicalScores(p);
     const shap = this.getShapAttributions(p);
     const ssc = this.getSscBundle(p);
+    const attack = this.getAttackInfo(p);
 
     return {
       ...p,
+      ...attack,
       scores,
       shap_top: shap.slice(0, 3),
       shap_all: shap,
