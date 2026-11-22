@@ -13,6 +13,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 <script src="offline_engine.js?v=2.1"></script>
 <script>
+  // ── 🔐 Compulsory Clinical Authentication Guard ───────────────
+  // Operating the live ICU ward monitor requires an authenticated staff session
+  if (!sessionStorage.getItem('spa_auth') && !localStorage.getItem('spa_token')) {
+    window.location.replace('login.html?notice=auth_required');
+  }
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.getRegistrations().then(regs => {

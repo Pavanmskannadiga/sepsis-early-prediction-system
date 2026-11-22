@@ -874,5 +874,19 @@
     </footer>
 
     <script src="dashboard.js?v=2.3"></script>
+    <script>
+      // Display authenticated staff badge if already logged in
+      const authUser = sessionStorage.getItem('spa_user') || localStorage.getItem('spa_user');
+      if (authUser) {
+        const signInBtn = document.querySelector('a[href="login.html"]');
+        if (signInBtn) {
+          let name = 'Staff';
+          try { name = JSON.parse(authUser).full_name.split(' ')[0] || JSON.parse(authUser).username; } catch(e){ name = authUser; }
+          signInBtn.innerHTML = `👤 ${name}`;
+          signInBtn.href = 'live.html';
+          signInBtn.title = 'Proceed to Authenticated Live ICU Ward Monitor';
+        }
+      }
+    </script>
 </body>
 </html>

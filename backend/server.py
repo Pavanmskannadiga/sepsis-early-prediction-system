@@ -251,7 +251,7 @@ async def startup_event():
 @app.get("/", include_in_schema=False)
 async def root():
     return FileResponse(
-        str(DASHBOARD_DIR / "live.html"),
+        str(DASHBOARD_DIR / "index.html"),
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
     )
 

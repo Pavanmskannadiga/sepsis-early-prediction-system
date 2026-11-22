@@ -730,6 +730,18 @@
         const role = localStorage.getItem('spa_role');
         if (role) document.getElementById('roleSelect').value = role;
     }
+
+    // ── URL Notice Handler ────────────────────────────────────
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('notice') === 'auth_required') {
+        alertText.textContent = '🔒 Clinical Staff Authentication Required — Please sign in to operate the live ICU ward monitor.';
+        alertBanner.style.background = 'rgba(124,58,237,0.14)';
+        alertBanner.style.borderColor = 'rgba(124,58,237,0.45)';
+        alertBanner.style.color = '#c4b5fd';
+        const svg = alertBanner.querySelector('svg');
+        if (svg) svg.style.color = '#a78bfa';
+        alertBanner.classList.add('visible');
+    }
     </script>
 </body>
 </html>
