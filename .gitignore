@@ -22,6 +22,9 @@ android/build/
 data/raw/
 *.psv
 *.csv
+*.db
+*.sqlite
+*.sqlite3
 
 # Tools & Local Binaries
 tools/

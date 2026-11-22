@@ -266,12 +266,12 @@ class SimulatedPatient:
 # Ward — manages a set of patients
 # ──────────────────────────────────────────────────────────────────────────────
 PATIENT_NAMES = [
-    ("Arjun", "Sharma"), ("Priya", "Nair"), ("Ravi", "Kumar"), ("Sunita", "Patel"),
-    ("Mohammed", "Khan"), ("Lakshmi", "Rao"), ("Suresh", "Verma"), ("Anjali", "Gupta"),
-    ("David", "Chen"), ("Elena", "Rostova"), ("Kavita", "Deshmukh"), ("Marcus", "Brody"),
-    ("Fatima", "Zahra"), ("Rajesh", "Pillai"), ("Grace", "O'Connor"), ("Vikram", "Malhotra"),
-    ("Aisha", "Al-Mansoor"), ("Lucas", "Silva"), ("Deepa", "Iyer"), ("Samuel", "Okoye"),
-    ("Meera", "Joshi"), ("Hannah", "Schmidt"), ("Karthik", "Rangan"), ("Chloe", "Dubois"),
+    ("Arjun", "Sharma", "M"), ("Priya", "Nair", "F"), ("Ravi", "Kumar", "M"), ("Sunita", "Patel", "F"),
+    ("Mohammed", "Khan", "M"), ("Lakshmi", "Rao", "F"), ("Suresh", "Verma", "M"), ("Anjali", "Gupta", "F"),
+    ("David", "Chen", "M"), ("Elena", "Rostova", "F"), ("Kavita", "Deshmukh", "F"), ("Marcus", "Brody", "M"),
+    ("Fatima", "Zahra", "F"), ("Rajesh", "Pillai", "M"), ("Grace", "O'Connor", "F"), ("Vikram", "Malhotra", "M"),
+    ("Aisha", "Al-Mansoor", "F"), ("Lucas", "Silva", "M"), ("Deepa", "Iyer", "F"), ("Samuel", "Okoye", "M"),
+    ("Meera", "Joshi", "F"), ("Hannah", "Schmidt", "F"), ("Karthik", "Rangan", "M"), ("Chloe", "Dubois", "F"),
 ]
 
 class ICUWard:
@@ -289,14 +289,14 @@ class ICUWard:
             "stable", "septic", "recovering", "deteriorating"
         ]
         for i in range(n):
-            fname, lname = PATIENT_NAMES[i % len(PATIENT_NAMES)]
+            fname, lname, gender = PATIENT_NAMES[i % len(PATIENT_NAMES)]
             pid = f"P{1000 + i + 1}"
             traj = trajectories[i % len(trajectories)]
             p = SimulatedPatient(
                 patient_id=pid,
                 name=f"{fname} {lname}",
                 age=random.randint(42, 84),
-                gender=random.choice(["M", "F"]),
+                gender=gender,
                 bed=WARD_NAMES[i % len(WARD_NAMES)],
                 trajectory=traj,
             )
@@ -337,8 +337,10 @@ class ICUWard:
 
         # Choose a name not currently active in ward
         active_names = {p.name for p in self.patients.values()}
-        available = [f"{fn} {ln}" for fn, ln in PATIENT_NAMES if f"{fn} {ln}" not in active_names]
-        name = random.choice(available) if available else f"{random.choice(PATIENT_NAMES)[0]} {random.choice(PATIENT_NAMES)[1]}"
+        available = [item for item in PATIENT_NAMES if f"{item[0]} {item[1]}" not in active_names]
+        chosen = random.choice(available) if available else random.choice(PATIENT_NAMES)
+        fname, lname, gender = chosen
+        name = f"{fname} {lname}"
 
         trajectories = ["stable", "deteriorating", "septic", "recovering", "stable"]
         traj = random.choice(trajectories)
@@ -347,7 +349,7 @@ class ICUWard:
             patient_id=new_pid,
             name=name,
             age=random.randint(38, 82),
-            gender=random.choice(["M", "F"]),
+            gender=gender,
             bed=bed,
             trajectory=traj,
         )

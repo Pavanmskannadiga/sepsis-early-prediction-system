@@ -44,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config
 from backend.icu_simulator import ICUWard, SimulatedPatient
 from backend.inference_engine import InferenceEngine
+from backend import database as db
 
 # ──────────────────────────────────────────────────────────────────────────────
 # App setup
@@ -165,6 +166,13 @@ async def _tick_loop():
 
             prediction = engine.predict(summary, feature_window=window)
             
+            # Persist patient telemetry and model prediction to local SQLite database
+            try:
+                db.upsert_patient(summary)
+                db.log_telemetry_and_prediction(summary, prediction)
+            except Exception as dbe:
+                pass
+
             # Audit log entry for tick prediction (essential for clinical operations auditing)
             write_audit_log(pid, "prediction", {
                 "score": prediction.get("risk_score"),
@@ -224,6 +232,7 @@ async def _tick_loop():
 
 @app.on_event("startup")
 async def startup_event():
+    db.init_db()
     asyncio.create_task(_tick_loop())
     print(f"\n{'='*60}")
     print(f"  [LIVE] Sepsis Prediction Server")
@@ -243,6 +252,14 @@ async def startup_event():
 async def root():
     return FileResponse(
         str(DASHBOARD_DIR / "live.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+    )
+
+@app.get("/login", include_in_schema=False)
+@app.get("/login.html", include_in_schema=False)
+async def login_page():
+    return FileResponse(
+        str(DASHBOARD_DIR / "login.html"),
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
     )
 
@@ -435,14 +452,19 @@ async def ingest_machine_data(reading: MachineReading, api_key: str = Depends(ve
     
     # Audit log entry for the prediction run
     write_audit_log(pid, "prediction", {
-        "score": prediction.get("score"),
-        "level": prediction.get("level"),
+        "score": prediction.get("risk_score"),
+        "level": prediction.get("risk_level"),
         "alert": prediction.get("alert")
     })
     
     # EHR Alert Writeback for high risk thresholds
-    if prediction.get("alert") or prediction.get("level") in ["HIGH", "CRITICAL"]:
-        await dispatch_ehr_alert(pid, prediction["score"], prediction["level"], prediction.get("evidence", {}))
+    if prediction.get("alert") or prediction.get("risk_level") in ["HIGH", "CRITICAL"]:
+        await dispatch_ehr_alert(
+            pid,
+            prediction.get("risk_score", 0.0),
+            prediction.get("risk_level", "LOW"),
+            {"top_features": prediction.get("top_features", []), "clinical_scores": prediction.get("clinical_scores", {})}
+        )
         
     return prediction
 
@@ -807,6 +829,69 @@ async def mock_ehr_writeback(alert: EHRAlert, api_key: str = Depends(verify_api_
     print(f"   Triggered:  {alert.alert_triggered}")
     print(f"   Evidence:   {list(alert.clinical_evidence.keys())}\n")
     return {"status": "success", "received": alert.patient_id}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Clinical Authentication & Database Control Endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+class UserLoginPayload(BaseModel):
+    username: str
+    password: str
+
+class UserCreatePayload(BaseModel):
+    username: str
+    password: str
+    full_name: str
+    role: str = "staff"
+
+@app.post("/api/auth/login")
+async def login_api(payload: UserLoginPayload):
+    user = db.authenticate_user(payload.username, payload.password)
+    if not user:
+        raise HTTPException(
+            status_code=fastapi_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Staff ID or password. Access denied."
+        )
+    import secrets
+    token = secrets.token_hex(24)
+    db.log_audit_event("login", None, user["username"], {"role": user["role"], "status": "success"})
+    return {
+        "status": "success",
+        "token": token,
+        "user": user,
+        "redirect": "live.html"
+    }
+
+@app.get("/api/auth/users")
+async def get_users_api():
+    """Lists registered clinical staff in the database."""
+    return {"users": db.list_users()}
+
+@app.post("/api/auth/users")
+async def create_user_api(payload: UserCreatePayload):
+    """Admin endpoint to create a new user in the database."""
+    ok, msg = db.create_user(payload.username, payload.password, payload.full_name, payload.role)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    db.log_audit_event("user_created", None, "admin", {"username": payload.username, "role": payload.role})
+    return {"status": "success", "message": msg}
+
+@app.get("/api/database/stats")
+async def get_db_stats_api():
+    """Returns real-time SQLite database statistics and storage metrics."""
+    return db.get_database_statistics()
+
+@app.get("/api/database/telemetry")
+async def get_db_telemetry_api(patient_id: str, limit: int = 50):
+    """Queries persistent telemetry history for a specific patient directly from SQLite."""
+    readings = db.query_patient_telemetry(patient_id, limit=limit)
+    return {"patient_id": patient_id, "count": len(readings), "telemetry": readings}
+
+@app.get("/api/database/audit-logs")
+async def get_db_audit_logs_api(limit: int = 50):
+    """Queries HIPAA audit logs directly from SQLite."""
+    logs = db.query_audit_logs(limit=limit)
+    return {"count": len(logs), "audit_logs": logs}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
