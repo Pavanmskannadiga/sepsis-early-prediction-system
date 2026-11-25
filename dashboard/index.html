@@ -58,14 +58,14 @@
         <div class="hero-content">
             <div class="hero-badge animate-in">
                 <span class="badge-dot"></span>
-                Active Clinical Model: BiLSTM + TCN Hybrid
+                Active Clinical Model: TCN → BiLSTM Hybrid
             </div>
             <h1 class="hero-title animate-in">
                 Sepsis Early<br>
                 <span class="gradient-text">Prediction System</span>
             </h1>
             <p class="hero-subtitle animate-in">
-                Clinical CDSS · BiLSTM+TCN Temporal Fusion with Multi-Head Attention &amp; SHAP<br>
+                Clinical CDSS · TCN → BiLSTM Temporal Fusion with Dual Pooling &amp; SHAP<br>
                 <span class="hero-sub-detail">Predicting sepsis onset <strong>6 hours</strong> before clinical manifestation · <strong>100%</strong> Sensitivity</span>
             </p>
             <div style="margin: 1.2rem 0; display:flex; justify-content:center; gap:0.8rem; flex-wrap:wrap;" class="animate-in">
@@ -120,7 +120,7 @@
             <div class="section-header animate-in">
                 <span class="section-tag">Neural Network</span>
                 <h2 class="section-title">Model Architecture</h2>
-                <p class="section-desc">BiLSTM with Multi-Head Attention mechanism for temporal clinical feature extraction</p>
+                <p class="section-desc">Temporal Convolutional Network (TCN) acting first, followed by Bidirectional LSTM for multi-scale clinical feature extraction</p>
             </div>
             <div class="architecture-diagram animate-in">
                 <div class="arch-flow" style="min-width: 1050px;">
@@ -135,25 +135,25 @@
                     </div>
                     <div class="arch-connector"><div class="arch-arrow"></div><div class="arch-pulse"></div></div>
 
-                    <!-- BiLSTM -->
+                    <!-- TCN First -->
+                    <div class="arch-node arch-tcn">
+                        <div class="arch-node-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        </div>
+                        <div class="arch-node-title">TCN Blocks</div>
+                        <div class="arch-node-detail">Dilations: 1, 2, 4 (128ch)</div>
+                        <div class="arch-node-sub">Multi-scale localized<br>causal vital dynamics</div>
+                    </div>
+                    <div class="arch-connector"><div class="arch-arrow"></div><div class="arch-pulse"></div></div>
+
+                    <!-- BiLSTM Next -->
                     <div class="arch-node arch-bilstm">
                         <div class="arch-node-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 6v-2M10 6v-2M14 6v-2M18 6v-2M6 18v2M10 18v2M14 18v2M18 18v2"/></svg>
                         </div>
                         <div class="arch-node-title">BiLSTM Layer</div>
-                        <div class="arch-node-detail">2 Layers, 128 Hidden</div>
-                        <div class="arch-node-sub">Bidirectional temporal<br>recurrent context</div>
-                    </div>
-                    <div class="arch-connector"><div class="arch-arrow"></div><div class="arch-pulse"></div></div>
-
-                    <!-- TCN Branch -->
-                    <div class="arch-node arch-tcn">
-                        <div class="arch-node-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                        </div>
-                        <div class="arch-node-title">TCN Hybrid</div>
-                        <div class="arch-node-detail">Dilated Causal Conv</div>
-                        <div class="arch-node-sub">Multi-scale temporal<br>receptive fields</div>
+                        <div class="arch-node-detail">128 Hidden → 256</div>
+                        <div class="arch-node-sub">Long-range bidirectional<br>temporal trajectory</div>
                     </div>
                     <div class="arch-connector"><div class="arch-arrow"></div><div class="arch-pulse"></div></div>
 
@@ -204,8 +204,8 @@
                 </div>
                 <div class="arch-detail-card">
                     <div class="detail-number">Hybrid</div>
-                    <div class="detail-label">BiLSTM + TCN</div>
-                    <div class="detail-desc">Combines bidirectional recurrent memory with causal dilated convolutions</div>
+                    <div class="detail-label">TCN → BiLSTM</div>
+                    <div class="detail-desc">Causal dilated convolutions extract local dynamics before bidirectional recurrent memory</div>
                 </div>
                 <div class="arch-detail-card">
                     <div class="detail-number">100%</div>
